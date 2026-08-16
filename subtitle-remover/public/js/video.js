@@ -209,10 +209,20 @@
 
     function decoderError() {
       var msg = String(failure && failure.message || failure || 'Decoder failure');
+      var ua = (root.navigator && root.navigator.userAgent) || '';
+      var onIOS = /iPad|iPhone|iPod/.test(ua) ||
+                  (/Macintosh/.test(ua) && root.navigator && root.navigator.maxTouchPoints > 1);
+      if (onIOS) {
+        return new Error(
+          'El decodificador de video de iOS abortó (' + msg + '). En iPhone y iPad esto no ' +
+          'tiene arreglo desde la página, y cambiar de navegador tampoco ayuda: Apple obliga ' +
+          'a que Chrome, Edge y Firefox usen el motor de Safari. Ábrelo en una computadora, ' +
+          'con Chrome o Edge.'
+        );
+      }
       return new Error(
         'El navegador no pudo decodificar el video (' + msg + '). ' +
-        'Safari en iPhone y iPad tiene límites de memoria muy estrictos para esto; ' +
-        'prueba en Chrome o Edge de escritorio, o con un video más corto o de menor resolución.'
+        'Prueba con Chrome o Edge actualizados, o con un video más corto o de menor resolución.'
       );
     }
 

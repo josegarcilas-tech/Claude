@@ -167,8 +167,7 @@ button:disabled, .primary[aria-disabled=true] { opacity: .5; cursor: not-allowed
 }
 .warning h3 { margin: 0 0 8px; font-size: 16px; }
 .warning p { margin: 0; }
-/* aviso, no bloqueo: se puede intentar igual */
-.warning.soft { background: rgba(217, 164, 65, .1); border-color: var(--warn); }
+.warning p + p { margin-top: 8px; }
 
 /* --------------------------------------------------------------- segmentos */
 .segments { display: flex; flex-direction: column; gap: 14px; }
@@ -183,6 +182,7 @@ button:disabled, .primary[aria-disabled=true] { opacity: .5; cursor: not-allowed
   gap: 15px;
 }
 .seg.off { opacity: .55; }
+.seg.no-thumb { grid-template-columns: 1fr; }
 .seg-thumb {
   position: relative; width: 132px; border-radius: 7px; overflow: hidden;
   background: #000; align-self: start; aspect-ratio: 9 / 16;

@@ -14,6 +14,7 @@
     audio: null,
     audioSamples: [],
     shots: [],
+    shotsFailed: false,
     segments: [],
     fps: 30,
     mode: 'translate',   // 'translate' = quitar y traducir | 'remove' = solo quitar
@@ -75,16 +76,19 @@
     $('drop').style.pointerEvents = 'none';
     $('drop').style.opacity = '.5';
   } else if (isIOS) {
-    // iOS expone WebCodecs, pero el decodificador del sistema tiene limites de
-    // memoria mucho mas ajustados y suele abortar con "Decoder failure".
+    // En iOS TODOS los navegadores usan WebKit por obligacion de Apple, asi que
+    // "abrelo en Chrome" no cambia nada: Chrome en iPhone es Safari por dentro.
+    // Su decodificador aborta con "Decoder failure" en videos de pocos segundos.
     var note = $('unsupported');
-    note.className = 'warning soft';
+    note.className = 'warning';
     note.innerHTML =
-      '<h3>Vas a tener problemas en iPhone o iPad</h3>' +
-      '<p>Safari en iOS sí tiene WebCodecs, pero el decodificador del sistema trabaja con ' +
-      'límites de memoria muy ajustados y suele abortar con <em>«Decoder failure»</em> en ' +
-      'videos de varios segundos. Puedes intentarlo —sobre todo con clips cortos—, pero ' +
-      'para que funcione de forma fiable ábrelo en <strong>Chrome o Edge de escritorio</strong>.</p>';
+      '<h3>Esto no va a funcionar en iPhone ni en iPad</h3>' +
+      '<p>El decodificador de video de iOS aborta con <em>«Decoder failure»</em> en cuanto ' +
+      'el clip dura unos segundos.</p>' +
+      '<p><strong>Cambiar de navegador en el iPhone no sirve:</strong> Apple obliga a que ' +
+      'Chrome, Edge y Firefox en iOS usen el motor de Safari, así que los tres se comportan ' +
+      'igual.</p>' +
+      '<p>Ábrelo en una <strong>computadora</strong>, con Chrome o Edge. Ahí sí funciona.</p>';
     show(note);
   }
 
@@ -178,20 +182,44 @@
 
   $('btn-analyze').addEventListener('click', analyze);
   $('btn-manual').addEventListener('click', function () {
-    ensureShots().then(function () {
-      addSegment(makeBlankSegment());
-      show($('step-segments'));
-      show($('step-render'));
-      renderSegments();
-    });
+    addManualSegment();
   });
 
+  function addManualSegment() {
+    // El segmento se añade YA: las miniaturas son un extra y llegan si pueden.
+    addSegment(makeBlankSegment());
+    show($('step-segments'));
+    show($('step-render'));
+    renderSegments();
+    ensureShots().then(function (shots) {
+      if (shots.length) renderSegments();
+    });
+  }
+
+  /**
+   * Miniaturas para las tarjetas de segmento. Nunca rechaza: si el navegador no
+   * puede decodificar, las tarjetas se muestran sin miniatura en vez de dejar la
+   * interfaz colgada — anadir segmentos a mano no necesita decodificar nada.
+   */
   function ensureShots() {
     if (state.shots.length) return Promise.resolve(state.shots);
+    if (state.shotsFailed) return Promise.resolve([]);
     var status = $('analyze-status');
-    setStatus(status, 'Extrayendo fotogramas…', 'work');
+    setStatus(status, 'Extrayendo fotogramas para las miniaturas…', 'work');
     return SR.Pipeline.sampleFrames(state.track, state.samples, 8, null)
-      .then(function (shots) { state.shots = shots; hide(status); return shots; });
+      .then(function (shots) {
+        state.shots = shots;
+        hide(status);
+        return shots;
+      })
+      .catch(function (err) {
+        state.shotsFailed = true;
+        setStatus(status, 'No se pudieron extraer las miniaturas.', 'err',
+          String(err && err.message || err) +
+          '\nPuedes seguir definiendo los segmentos a mano, pero este navegador ' +
+          'tampoco podrá procesar el video.');
+        return [];
+      });
   }
 
   function analyze() {
@@ -316,10 +344,7 @@
   // -------------------------------------------------------------- paso 3
 
   $('btn-add').addEventListener('click', function () {
-    ensureShots().then(function () {
-      addSegment(makeBlankSegment());
-      renderSegments();
-    });
+    addManualSegment();
   });
 
   function nearestShot(time) {
@@ -340,11 +365,11 @@
       var card = document.createElement('div');
       card.className = 'seg' + (seg.enabled ? '' : ' off');
 
-      // miniatura con la caja detectada
-      var thumb = document.createElement('div');
-      thumb.className = 'seg-thumb';
+      // miniatura con la caja detectada (si se pudieron extraer fotogramas)
       var shot = nearestShot((seg.start + seg.end) / 2);
       if (shot) {
+        var thumb = document.createElement('div');
+        thumb.className = 'seg-thumb';
         var img = document.createElement('img');
         img.src = shot.dataUrl;
         img.alt = '';
@@ -356,8 +381,10 @@
         mark.style.width = ((seg.pixelBox.x1 - seg.pixelBox.x0) / W * 100) + '%';
         mark.style.height = ((seg.pixelBox.y1 - seg.pixelBox.y0) / H * 100) + '%';
         thumb.appendChild(mark);
+        card.appendChild(thumb);
+      } else {
+        card.classList.add('no-thumb');
       }
-      card.appendChild(thumb);
 
       var body = document.createElement('div');
       body.className = 'seg-body';
