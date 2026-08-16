@@ -308,8 +308,8 @@
     var samples = src.samples;
     var total = samples.length;
     var url = root.URL.createObjectURL(src.file);
+    var usingDataUrl = false;
     var v = document.createElement('video');
-    v.src = url;
     v.muted = true;
     v.defaultMuted = true;
     v.playsInline = true;
@@ -328,23 +328,71 @@
       try { v.pause(); } catch (_) {}
       try { if (v.parentNode) v.parentNode.removeChild(v); } catch (_) {}
       try { v.removeAttribute('src'); v.load(); } catch (_) {}
-      try { root.URL.revokeObjectURL(url); } catch (_) {}
+      try { if (!usingDataUrl) root.URL.revokeObjectURL(url); } catch (_) {}
     }
 
     /**
-     * iOS solo empieza a decodificar de verdad despues de una reproduccion. Un
-     * play() seguido de pause() deja el elemento listo sin que se oiga ni se vea.
+     * Safari en iOS falla al reproducir video desde una URL `blob:` (quiere pedir
+     * el archivo por rangos de bytes, y un blob no se los sirve). Como segundo
+     * intento se carga el archivo entero como data: URL, que si acepta. Solo para
+     * archivos pequenos: una data URL se queda en memoria y ademas crece un 33%.
+     */
+    var MAX_DATA_URL = 40 * 1024 * 1024;
+
+    function fileToDataUrl(file) {
+      return new Promise(function (res, rej) {
+        var fr = new FileReader();
+        fr.onload = function () { res(fr.result); };
+        fr.onerror = function () { rej(new Error('No se pudo leer el archivo.')); };
+        fr.readAsDataURL(file);
+      });
+    }
+
+    function openWith(source) {
+      try { v.removeAttribute('src'); v.load(); } catch (_) {}
+      v.src = source;
+      try { v.load(); } catch (_) {}
+      return ready().then(prime);
+    }
+
+    /** Espera a que readyState llegue a `want`; devuelve si lo consiguio. */
+    function waitReady(want, ms) {
+      if (v.readyState >= want) return Promise.resolve(true);
+      return new Promise(function (res) {
+        var done = false;
+        var finish = function (okay) {
+          if (done) return;
+          done = true;
+          clearInterval(poll);
+          clearTimeout(guard);
+          res(okay);
+        };
+        // iOS no siempre dispara los eventos esperados, asi que ademas sondeamos
+        var poll = setInterval(function () { if (v.readyState >= want) finish(true); }, 60);
+        var guard = setTimeout(function () { finish(v.readyState >= want); }, ms);
+        v.addEventListener('error', function () { finish(false); }, { once: true });
+      });
+    }
+
+    /**
+     * iOS ignora preload="auto": no descarga los datos hasta que el video se
+     * reproduce, y menos aun si el elemento es diminuto y esta fuera de vista.
+     * Reproducir en silencio fuerza la carga; muted + playsinline lo permite sin
+     * gesto del usuario. Se pausa en cuanto hay datos suficientes.
      */
     function prime() {
+      var p;
       try {
-        var p = v.play();
-        if (p && typeof p.then === 'function') {
-          return p.then(function () { try { v.pause(); } catch (_) {} },
-                        function () { /* sin gesto de usuario: seguimos igual */ });
-        }
-        try { v.pause(); } catch (_) {}
-      } catch (_) { /* da igual, seguimos */ }
-      return Promise.resolve();
+        p = v.play();
+      } catch (_) {
+        return waitReady(2, 8000).then(function () {});
+      }
+      var started = (p && typeof p.then === 'function')
+        ? p.catch(function () { /* si no deja reproducir, seguimos igual */ })
+        : Promise.resolve();
+      return started
+        .then(function () { return waitReady(2, 12000); })
+        .then(function () { try { v.pause(); } catch (_) {} });
     }
 
     /**
@@ -370,20 +418,21 @@
       });
     }
 
+    /**
+     * Los metadatos SI llegan en iOS sin reproducir; los datos de video no.
+     * Por eso solo se exige aqui llegar a HAVE_METADATA, y de la descarga real se
+     * encarga prime(). Fallar por no tener datos todavia era lo que rompia iOS.
+     */
     function ready() {
-      return new Promise(function (res, rej) {
-        var done = false;
-        var ok = function () { if (!done) { done = true; res(); } };
-        var bad = function () {
-          if (done) return;
-          done = true;
-          rej(new Error('El navegador no pudo abrir el video para reproducirlo.'));
-        };
-        if (v.readyState >= 2) return ok();
-        v.addEventListener('loadeddata', ok, { once: true });
-        v.addEventListener('canplay', ok, { once: true });
-        v.addEventListener('error', bad, { once: true });
-        setTimeout(bad, 30000);
+      return waitReady(1, 25000).then(function (okay) {
+        if (!okay || !v.videoWidth) {
+          var code = v.error && v.error.code;
+          throw new Error(
+            'El navegador no pudo abrir este video' +
+            (code ? ' (error de medios ' + code + ')' : '') +
+            (usingDataUrl ? ' [intentado también como data: URL]' : '') + '.'
+          );
+        }
       });
     }
 
@@ -429,8 +478,17 @@
       }).then(step);
     }
 
-    return ready()
-      .then(prime)
+    return openWith(url)
+      .catch(function (err) {
+        if (src.file.size > MAX_DATA_URL) throw err;
+        // segundo intento: el mismo archivo, pero incrustado como data: URL
+        return fileToDataUrl(src.file).then(function (dataUrl) {
+          try { root.URL.revokeObjectURL(url); } catch (_) {}
+          usingDataUrl = true;
+          url = dataUrl;
+          return openWith(dataUrl);
+        }).catch(function () { throw err; });
+      })
       .then(step)
       .then(function (n) { cleanup(); return n; })
       .catch(function (e) { cleanup(); throw e; });
