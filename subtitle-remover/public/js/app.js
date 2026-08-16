@@ -1,5 +1,10 @@
 /*
  * app.js — interfaz y orquestacion.
+ *
+ * La app trabaja sobre una lista de "jobs": un job por video cargado. Todas las
+ * fases (analisis y procesado) recorren esa lista EN SERIE, nunca en paralelo:
+ * decodificar y recodificar video se come CPU y memoria, y hacer dos a la vez
+ * multiplica el pico de memoria justo donde mas duele (el telefono).
  */
 (function () {
   'use strict';
@@ -8,23 +13,19 @@
   var $ = function (id) { return document.getElementById(id); };
 
   var state = {
-    file: null,
-    track: null,
-    samples: [],
-    src: null,
-    audio: null,
-    audioSamples: [],
-    shots: [],
-    shotsFailed: false,
-    segments: [],
-    fps: 30,
+    jobs: [],
+    nextId: 1,
     mode: 'translate',   // 'translate' = quitar y traducir | 'remove' = solo quitar
-    blobUrl: null
+    zipUrl: null
   };
 
   function currentMode() {
     var checked = document.querySelector('input[name="mode"]:checked');
     return checked ? checked.value : 'translate';
+  }
+
+  function doneJobs() {
+    return state.jobs.filter(function (j) { return j.status === 'hecho' && j.blob; });
   }
 
   // --------------------------------------------------------------- utilidades
@@ -53,11 +54,26 @@
     return (n / 1048576).toFixed(1) + ' MB';
   }
 
-  function fmtTime(s) { return Number(s).toFixed(2) + 's'; }
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
 
   // Deja que el navegador repinte entre pasos pesados.
   function yieldToUi() {
     return new Promise(function (r) { requestAnimationFrame(function () { setTimeout(r, 0); }); });
+  }
+
+  /** Recorre una lista en serie, aplicando fn(item, i) que devuelve una promesa. */
+  function series(items, fn) {
+    return items.reduce(function (chain, item, i) {
+      return chain.then(function () { return fn(item, i); });
+    }, Promise.resolve());
+  }
+
+  function outName(job) {
+    return (job.file.name || 'video').replace(/\.[^.]+$/, '') + '-limpio.mp4';
   }
 
   // ----------------------------------------------------- compatibilidad
@@ -77,17 +93,13 @@
     $('drop').style.pointerEvents = 'none';
     $('drop').style.opacity = '.5';
   } else if (isIOS) {
-    // En iOS el decodificador de WebCodecs aborta con "Decoder failure", pero
-    // reproducir video es justo lo que estos equipos hacen bien: si falla, se
-    // reintenta leyendo los fotogramas de un <video> normal.
     var note = $('unsupported');
     note.className = 'warning soft';
     note.innerHTML =
       '<h3>En iPhone y iPad va por el camino lento</h3>' +
-      '<p>El decodificador rápido de iOS falla con <em>«Decoder failure»</em>, así que la app ' +
-      'lo detecta y extrae los fotogramas reproduciendo el video, que sí funciona aquí. ' +
-      'Tarda bastante más y con clips largos el navegador puede quedarse sin memoria.</p>' +
-      '<p>Si tienes una computadora a mano, ahí va mucho más rápido.</p>';
+      '<p>El decodificador rápido de iOS falla, así que la app lo detecta y extrae los ' +
+      'fotogramas reproduciendo el video, que sí funciona aquí. Tarda bastante más, y con ' +
+      'varios videos a la vez el navegador puede quedarse sin memoria: ve de pocos en pocos.</p>';
     show(note);
   }
 
@@ -107,63 +119,147 @@
     drop.addEventListener(ev, function (e) { e.preventDefault(); drop.classList.remove('over'); });
   });
   drop.addEventListener('drop', function (e) {
-    var f = e.dataTransfer.files && e.dataTransfer.files[0];
-    if (f) loadFile(f);
+    addFiles(e.dataTransfer.files);
   });
   fileInput.addEventListener('change', function () {
-    if (fileInput.files[0]) loadFile(fileInput.files[0]);
+    addFiles(fileInput.files);
+    fileInput.value = '';   // permite volver a elegir el mismo archivo
   });
 
-  function loadFile(file) {
-    state.file = file;
-    var info = $('file-info');
-    info.innerHTML = '<p>Leyendo el video…</p>';
-    show(info);
+  function addFiles(fileList) {
+    var files = Array.prototype.slice.call(fileList || []).filter(function (f) {
+      return f && (/^video\//.test(f.type) || /\.(mp4|m4v|mov)$/i.test(f.name));
+    });
+    if (!files.length) return;
 
-    SR.Video.demux(file).then(function (res) {
-      state.track = res.video;
-      state.samples = res.videoSamples;
-      state.audio = res.audio;
-      state.audioSamples = res.audioSamples;
-      // el camino de respaldo reproduce el archivo original en un <video>
-      state.src = { file: file, track: res.video, samples: res.videoSamples };
+    var status = $('file-status');
+    var jobs = files.map(function (f) {
+      var job = {
+        id: state.nextId++,
+        file: f,
+        status: 'leyendo',
+        error: null,
+        segments: [],
+        shots: [],
+        shotsFailed: false,
+        blob: null,
+        blobUrl: null,
+        open: false
+      };
+      state.jobs.push(job);
+      return job;
+    });
+    renderJobs();
 
-      var durationSec = state.samples.length
-        ? (state.samples[state.samples.length - 1].timestamp + state.samples[state.samples.length - 1].duration) / 1e6
-        : 0;
-      state.fps = durationSec > 0 ? state.samples.length / durationSec : 30;
+    setStatus(status, 'Leyendo ' + jobs.length + ' video(s)…', 'work');
 
-      info.innerHTML =
-        '<dl>' +
-        '<dt>Archivo</dt><dd>' + escapeHtml(file.name) + ' · ' + fmtBytes(file.size) + '</dd>' +
-        '<dt>Resolución</dt><dd>' + state.track.width + ' × ' + state.track.height + '</dd>' +
-        '<dt>Duración</dt><dd>' + durationSec.toFixed(2) + ' s · ' + state.samples.length + ' fotogramas · ' +
-          state.fps.toFixed(1) + ' fps</dd>' +
-        '<dt>Audio</dt><dd>' + (state.audio
-            ? (state.audio.description
-                ? 'sí, se copia sin recodificar'
-                : 'detectado, pero sin configuración legible — se descartará')
-            : 'sin pista de audio') + '</dd>' +
-        '</dl>';
-
+    series(jobs, function (job) {
+      return SR.Video.demux(job.file).then(function (res) {
+        job.track = res.video;
+        job.samples = res.videoSamples;
+        job.audio = res.audio;
+        job.audioSamples = res.audioSamples;
+        job.src = { file: job.file, track: res.video, samples: res.videoSamples };
+        var last = res.videoSamples[res.videoSamples.length - 1];
+        job.duration = last ? (last.timestamp + last.duration) / 1e6 : 0;
+        job.fps = job.duration > 0 ? res.videoSamples.length / job.duration : 30;
+        job.status = 'pendiente';
+      }).catch(function (err) {
+        job.status = 'error';
+        job.error = String(err && err.message || err);
+      }).then(function () {
+        renderJobs();
+        return yieldToUi();
+      });
+    }).then(function () {
+      var ok = state.jobs.filter(function (j) { return j.status !== 'error'; });
+      var bad = state.jobs.filter(function (j) { return j.status === 'error'; });
+      if (!ok.length) {
+        setStatus(status, 'No se pudo leer ningún video.', 'err');
+        return;
+      }
+      if (bad.length) {
+        setStatus(status, ok.length + ' video(s) listos · ' + bad.length + ' con problemas.', 'err');
+      } else {
+        hide(status);
+      }
       show($('step-analyze'));
-      $('step-analyze').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-    }).catch(function (err) {
-      info.innerHTML = '';
-      setStatus(info, 'No se pudo leer el video.', 'err', String(err.message || err));
-      info.className = 'status err';
+      show($('step-render'));
     });
   }
 
-  function escapeHtml(s) {
-    return String(s).replace(/[&<>"']/g, function (c) {
-      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+  var STATUS_TEXT = {
+    leyendo: 'leyendo…',
+    pendiente: 'listo para analizar',
+    analizando: 'analizando…',
+    analizado: 'analizado',
+    procesando: 'procesando…',
+    hecho: 'procesado',
+    error: 'error'
+  };
+
+  function renderJobs() {
+    var host = $('job-list');
+    host.innerHTML = '';
+    state.jobs.forEach(function (job) {
+      var row = document.createElement('div');
+      row.className = 'job' + (job.status === 'error' ? ' bad' : '');
+
+      var main = document.createElement('div');
+      main.className = 'job-main';
+      var name = document.createElement('div');
+      name.className = 'job-name';
+      name.textContent = job.file.name;
+      main.appendChild(name);
+
+      var meta = document.createElement('div');
+      meta.className = 'job-meta';
+      var bits = [fmtBytes(job.file.size)];
+      if (job.track) {
+        bits.push(job.track.width + '×' + job.track.height);
+        bits.push(job.duration.toFixed(1) + ' s');
+        bits.push(job.samples.length + ' fotogramas');
+      }
+      if (job.status === 'analizado' || job.status === 'hecho' || job.status === 'procesando') {
+        bits.push(job.segments.length + ' subtítulo(s)');
+      }
+      meta.textContent = bits.join(' · ');
+      main.appendChild(meta);
+
+      if (job.error) {
+        var err = document.createElement('div');
+        err.className = 'job-err';
+        err.textContent = job.error;
+        main.appendChild(err);
+      }
+      row.appendChild(main);
+
+      var side = document.createElement('div');
+      side.className = 'job-side';
+      var badge = document.createElement('span');
+      badge.className = 'badge state-' + job.status;
+      badge.textContent = STATUS_TEXT[job.status] || job.status;
+      side.appendChild(badge);
+
+      if (job.status !== 'procesando' && job.status !== 'analizando' && job.status !== 'leyendo') {
+        var del = document.createElement('button');
+        del.className = 'ghost small';
+        del.textContent = 'Quitar';
+        del.addEventListener('click', function () {
+          if (job.blobUrl) URL.revokeObjectURL(job.blobUrl);
+          state.jobs = state.jobs.filter(function (j) { return j !== job; });
+          renderJobs(); renderReview(); renderResults();
+          if (!state.jobs.length) { hide($('step-analyze')); hide($('step-render')); hide($('step-segments')); }
+        });
+        side.appendChild(del);
+      }
+      row.appendChild(side);
+      host.appendChild(row);
     });
   }
 
   // -------------------------------------------------------------- paso 2
 
-  // El modo cambia lo que se le pide a Claude y lo que se dibuja al final.
   Array.prototype.forEach.call(document.querySelectorAll('input[name="mode"]'), function (radio) {
     radio.addEventListener('change', function () {
       state.mode = currentMode();
@@ -177,64 +273,65 @@
           'Después puedes corregir cualquier cosa antes de procesar.'
         : 'Claude solo ubica los subtítulos incrustados; no se escribirá texto nuevo. ' +
           'Después puedes ajustar las zonas antes de procesar.';
-      if (state.segments.length) renderSegments();
+      renderReview();
     });
   });
 
-  $('btn-analyze').addEventListener('click', analyze);
-  $('btn-manual').addEventListener('click', function () {
-    addManualSegment();
-  });
+  $('btn-analyze').addEventListener('click', analyzeAll);
 
-  function addManualSegment() {
-    // El segmento se añade YA: las miniaturas son un extra y llegan si pueden.
-    addSegment(makeBlankSegment());
-    show($('step-segments'));
-    show($('step-render'));
-    renderSegments();
-    ensureShots().then(function (shots) {
-      if (shots.length) renderSegments();
-    });
-  }
-
-  /**
-   * Miniaturas para las tarjetas de segmento. Nunca rechaza: si el navegador no
-   * puede decodificar, las tarjetas se muestran sin miniatura en vez de dejar la
-   * interfaz colgada — anadir segmentos a mano no necesita decodificar nada.
-   */
-  function ensureShots() {
-    if (state.shots.length) return Promise.resolve(state.shots);
-    if (state.shotsFailed) return Promise.resolve([]);
-    var status = $('analyze-status');
-    setStatus(status, 'Extrayendo fotogramas para las miniaturas…', 'work');
-    return SR.Pipeline.sampleFrames(state.src, 8, null)
-      .then(function (shots) {
-        state.shots = shots;
-        hide(status);
-        return shots;
-      })
-      .catch(function (err) {
-        state.shotsFailed = true;
-        setStatus(status, 'No se pudieron extraer las miniaturas.', 'err',
-          String(err && err.message || err) +
-          '\nPuedes seguir definiendo los segmentos a mano, pero este navegador ' +
-          'tampoco podrá procesar el video.');
-        return [];
-      });
-  }
-
-  function analyze() {
+  function analyzeAll() {
     var status = $('analyze-status');
     var btn = $('btn-analyze');
+    var targets = state.jobs.filter(function (j) {
+      return j.status === 'pendiente' || j.status === 'analizado';
+    });
+    if (!targets.length) {
+      setStatus(status, 'No hay videos que analizar.', 'err');
+      return;
+    }
+
     btn.disabled = true;
-    setStatus(status, 'Extrayendo fotogramas del video…', 'work');
-
-    var count = parseInt($('frame-count').value, 10) || 8;
     state.mode = currentMode();
+    var count = parseInt($('frame-count').value, 10) || 8;
+    var failures = [];
 
-    SR.Pipeline.sampleFrames(state.src, count, null).then(function (shots) {
-      state.shots = shots;
-      setStatus(status, 'Claude está analizando ' + shots.length + ' fotogramas…', 'work');
+    series(targets, function (job, i) {
+      job.status = 'analizando';
+      renderJobs();
+      setStatus(status, 'Analizando ' + (i + 1) + ' de ' + targets.length + ': ' + job.file.name, 'work');
+
+      return analyzeJob(job, count).then(function () {
+        job.status = 'analizado';
+      }).catch(function (err) {
+        job.status = 'error';
+        job.error = String(err && err.message || err);
+        failures.push(job);
+      }).then(function () {
+        renderJobs();
+        renderReview();
+        return yieldToUi();
+      });
+    }).then(function () {
+      var ok = targets.length - failures.length;
+      if (!ok) {
+        setStatus(status, 'Falló el análisis en todos los videos.', 'err',
+          failures[0] ? failures[0].error : '');
+      } else if (failures.length) {
+        setStatus(status, ok + ' de ' + targets.length + ' analizados. ' +
+          failures.length + ' con problemas — puedes añadirles zonas a mano.', 'err');
+      } else {
+        setStatus(status, ok + ' video(s) analizados.', 'ok');
+      }
+      show($('step-segments'));
+      show($('step-render'));
+      renderReview();
+      $('step-segments').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }).then(function () { btn.disabled = false; });
+  }
+
+  function analyzeJob(job, count) {
+    return SR.Pipeline.sampleFrames(job.src, count, null).then(function (shots) {
+      job.shots = shots;
       return fetch('/api/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -250,44 +347,19 @@
       if (!r.ok) {
         var hint = r.body && r.body.hint ? '\n' + r.body.hint : '';
         if (r.status === 502 || r.status === 504) {
-          hint += '\nSi el error se repite, baja «Fotogramas de análisis» a 6 ' +
-                  'o añade los segmentos a mano.';
+          hint += '\nSi se repite, baja «Fotogramas de análisis» a 6.';
         }
         throw new Error((r.body && (r.body.error || r.body.detail) || 'Error HTTP ' + r.status) + hint);
       }
-      var segs = (r.body.segments || []);
-      if (!segs.length) {
-        setStatus(status, 'Claude no encontró subtítulos incrustados en este video.', 'err',
-          'Puedes añadir un segmento a mano si sabes dónde está el texto.');
-        show($('step-segments'));
-        show($('step-render'));
-        return;
-      }
-
-      state.segments = segs.map(toInternalSegment);
-      setStatus(status, 'Ajustando los cortes fotograma a fotograma…', 'work');
-
-      return yieldToUi()
-        .then(function () { return SR.Pipeline.refine(state.src, state.segments, null); })
-        .then(function () {
-          setStatus(status, 'Listo: ' + state.segments.length + ' subtítulo(s) detectado(s).', 'ok');
-          show($('step-segments'));
-          show($('step-render'));
-          renderSegments();
-          $('step-segments').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-        });
-    }).catch(function (err) {
-      setStatus(status, 'Falló el análisis.', 'err', String(err.message || err));
-      show($('step-segments'));
-      show($('step-render'));
-      renderSegments();
-    }).then(function () {
-      btn.disabled = false;
+      var segs = r.body.segments || [];
+      job.segments = segs.map(function (s) { return toInternalSegment(job, s); });
+      if (!job.segments.length) return;
+      return SR.Pipeline.refine(job.src, job.segments, null);
     });
   }
 
-  function toInternalSegment(s) {
-    var W = state.track.width, H = state.track.height;
+  function toInternalSegment(job, s) {
+    var W = job.track.width, H = job.track.height;
     // margen extra: la caja de Claude suele ir justa y el contorno del texto sobresale
     var padX = W * 0.02, padY = H * 0.012;
     var top = s.box.y * H;
@@ -314,11 +386,11 @@
     };
   }
 
-  function makeBlankSegment() {
-    var W = state.track.width, H = state.track.height;
-    return {
+  function makeBlankSegment(job) {
+    var W = job.track.width, H = job.track.height;
+    var seg = {
       start: 0,
-      end: Math.min(3, state.samples.length / state.fps),
+      end: Math.min(3, job.duration || 3),
       pixelBox: { x0: W * 0.06, y0: H * 0.62, x1: W * 0.94, y1: H * 0.78 },
       position: 'bottom',
       marginV: Math.round(H * 0.22),
@@ -326,161 +398,203 @@
       translated: '',
       enabled: true,
       firstFrame: 0,
-      lastFrame: Math.min(state.samples.length - 1, Math.round(3 * state.fps)),
+      lastFrame: 0,
       refined: false
     };
+    syncFrames(job, seg);
+    return seg;
   }
 
-  function addSegment(seg) {
-    state.segments.push(seg);
-    syncFramesFromTimes(seg);
+  function syncFrames(job, seg) {
+    var n = job.samples.length;
+    seg.firstFrame = Math.max(0, Math.min(n - 1, Math.round(seg.start * job.fps)));
+    seg.lastFrame = Math.max(seg.firstFrame, Math.min(n - 1, Math.round(seg.end * job.fps)));
   }
 
-  function syncFramesFromTimes(seg) {
-    var n = state.samples.length;
-    seg.firstFrame = Math.max(0, Math.min(n - 1, Math.round(seg.start * state.fps)));
-    seg.lastFrame = Math.max(seg.firstFrame, Math.min(n - 1, Math.round(seg.end * state.fps)));
+  /**
+   * Miniaturas para las tarjetas de segmento. Nunca rechaza: si el navegador no
+   * puede decodificar, las tarjetas se muestran sin miniatura en vez de dejar la
+   * interfaz colgada — anadir segmentos a mano no necesita decodificar nada.
+   */
+  function ensureShots(job) {
+    if (job.shots.length || job.shotsFailed) return Promise.resolve(job.shots);
+    return SR.Pipeline.sampleFrames(job.src, 8, null)
+      .then(function (shots) { job.shots = shots; return shots; })
+      .catch(function () { job.shotsFailed = true; return []; });
   }
 
   // -------------------------------------------------------------- paso 3
 
-  $('btn-add').addEventListener('click', function () {
-    addManualSegment();
-  });
+  function renderReview() {
+    var host = $('review');
+    host.innerHTML = '';
+    var usable = state.jobs.filter(function (j) { return j.track; });
+    if (!usable.length) return;
 
-  function nearestShot(time) {
+    usable.forEach(function (job) {
+      var box = document.createElement('div');
+      box.className = 'review-job';
+
+      var head = document.createElement('button');
+      head.className = 'review-head';
+      head.setAttribute('aria-expanded', job.open ? 'true' : 'false');
+      head.innerHTML =
+        '<span class="caret">' + (job.open ? '▾' : '▸') + '</span>' +
+        '<span class="review-name">' + escapeHtml(job.file.name) + '</span>' +
+        '<span class="review-count">' + job.segments.length + ' subtítulo(s)</span>';
+      head.addEventListener('click', function () {
+        job.open = !job.open;
+        renderReview();
+        if (job.open) ensureShots(job).then(function (s) { if (s.length) renderReview(); });
+      });
+      box.appendChild(head);
+
+      if (job.open) {
+        var body = document.createElement('div');
+        body.className = 'review-body';
+        var list = document.createElement('div');
+        list.className = 'segments';
+        job.segments.forEach(function (seg, i) {
+          list.appendChild(segmentCard(job, seg, i));
+        });
+        body.appendChild(list);
+
+        var add = document.createElement('button');
+        add.className = 'ghost small';
+        add.textContent = '+ Añadir segmento a mano';
+        add.addEventListener('click', function () {
+          job.segments.push(makeBlankSegment(job));
+          renderReview();
+          ensureShots(job).then(function (s) { if (s.length) renderReview(); });
+        });
+        body.appendChild(add);
+        box.appendChild(body);
+      }
+      host.appendChild(box);
+    });
+  }
+
+  function nearestShot(job, time) {
     var best = null, bestD = Infinity;
-    for (var i = 0; i < state.shots.length; i++) {
-      var d = Math.abs(state.shots[i].time - time);
-      if (d < bestD) { bestD = d; best = state.shots[i]; }
+    for (var i = 0; i < job.shots.length; i++) {
+      var d = Math.abs(job.shots[i].time - time);
+      if (d < bestD) { bestD = d; best = job.shots[i]; }
     }
     return best;
   }
 
-  function renderSegments() {
-    var host = $('segments');
-    host.innerHTML = '';
-    var W = state.track.width, H = state.track.height;
+  function segmentCard(job, seg, i) {
+    var W = job.track.width, H = job.track.height;
+    var card = document.createElement('div');
+    card.className = 'seg' + (seg.enabled ? '' : ' off');
 
-    state.segments.forEach(function (seg, i) {
-      var card = document.createElement('div');
-      card.className = 'seg' + (seg.enabled ? '' : ' off');
+    var shot = nearestShot(job, (seg.start + seg.end) / 2);
+    if (shot) {
+      var thumb = document.createElement('div');
+      thumb.className = 'seg-thumb';
+      var img = document.createElement('img');
+      img.src = shot.dataUrl;
+      img.alt = '';
+      thumb.appendChild(img);
+      var mark = document.createElement('div');
+      mark.className = 'boxmark';
+      mark.style.left = (seg.pixelBox.x0 / W * 100) + '%';
+      mark.style.top = (seg.pixelBox.y0 / H * 100) + '%';
+      mark.style.width = ((seg.pixelBox.x1 - seg.pixelBox.x0) / W * 100) + '%';
+      mark.style.height = ((seg.pixelBox.y1 - seg.pixelBox.y0) / H * 100) + '%';
+      thumb.appendChild(mark);
+      card.appendChild(thumb);
+    } else {
+      card.classList.add('no-thumb');
+    }
 
-      // miniatura con la caja detectada (si se pudieron extraer fotogramas)
-      var shot = nearestShot((seg.start + seg.end) / 2);
-      if (shot) {
-        var thumb = document.createElement('div');
-        thumb.className = 'seg-thumb';
-        var img = document.createElement('img');
-        img.src = shot.dataUrl;
-        img.alt = '';
-        thumb.appendChild(img);
-        var mark = document.createElement('div');
-        mark.className = 'boxmark';
-        mark.style.left = (seg.pixelBox.x0 / W * 100) + '%';
-        mark.style.top = (seg.pixelBox.y0 / H * 100) + '%';
-        mark.style.width = ((seg.pixelBox.x1 - seg.pixelBox.x0) / W * 100) + '%';
-        mark.style.height = ((seg.pixelBox.y1 - seg.pixelBox.y0) / H * 100) + '%';
-        thumb.appendChild(mark);
-        card.appendChild(thumb);
-      } else {
-        card.classList.add('no-thumb');
-      }
+    var body = document.createElement('div');
+    body.className = 'seg-body';
 
-      var body = document.createElement('div');
-      body.className = 'seg-body';
+    var row1 = document.createElement('div');
+    row1.className = 'seg-row';
+    var times = document.createElement('div');
+    times.className = 'seg-times';
+    times.appendChild(numField('Desde (s)', seg.start.toFixed(2), function (v) {
+      seg.start = parseFloat(v) || 0; syncFrames(job, seg); renderReview();
+    }));
+    times.appendChild(numField('Hasta (s)', seg.end.toFixed(2), function (v) {
+      seg.end = parseFloat(v) || 0; syncFrames(job, seg); renderReview();
+    }));
+    row1.appendChild(times);
 
-      // fila 1: tiempos + estado + acciones
-      var row1 = document.createElement('div');
-      row1.className = 'seg-row';
+    var badge = document.createElement('span');
+    badge.className = 'badge' + (seg.refined ? '' : ' approx');
+    badge.textContent = seg.refined
+      ? 'cortes exactos (' + seg.firstFrame + '–' + seg.lastFrame + ')'
+      : 'tiempos aproximados';
+    row1.appendChild(badge);
 
-      var times = document.createElement('div');
-      times.className = 'seg-times';
-      times.appendChild(numField('Desde (s)', seg.start.toFixed(2), function (v) {
-        seg.start = parseFloat(v) || 0; syncFramesFromTimes(seg); renderSegments();
-      }));
-      times.appendChild(numField('Hasta (s)', seg.end.toFixed(2), function (v) {
-        seg.end = parseFloat(v) || 0; syncFramesFromTimes(seg); renderSegments();
-      }));
-      row1.appendChild(times);
+    var actions = document.createElement('div');
+    actions.className = 'seg-actions';
+    var toggle = document.createElement('label');
+    toggle.className = 'check';
+    var cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = seg.enabled;
+    cb.addEventListener('change', function () { seg.enabled = cb.checked; renderReview(); });
+    toggle.appendChild(cb);
+    toggle.appendChild(document.createTextNode('activo'));
+    actions.appendChild(toggle);
 
-      var badge = document.createElement('span');
-      badge.className = 'badge' + (seg.refined ? '' : ' approx');
-      badge.textContent = seg.refined
-        ? 'cortes exactos (' + seg.firstFrame + '–' + seg.lastFrame + ')'
-        : 'tiempos aproximados';
-      row1.appendChild(badge);
-
-      var actions = document.createElement('div');
-      actions.className = 'seg-actions';
-
-      var toggle = document.createElement('label');
-      toggle.className = 'check';
-      var cb = document.createElement('input');
-      cb.type = 'checkbox';
-      cb.checked = seg.enabled;
-      cb.addEventListener('change', function () { seg.enabled = cb.checked; renderSegments(); });
-      toggle.appendChild(cb);
-      toggle.appendChild(document.createTextNode('activo'));
-      actions.appendChild(toggle);
-
-      var del = document.createElement('button');
-      del.className = 'ghost small';
-      del.textContent = 'Quitar';
-      del.addEventListener('click', function () {
-        state.segments.splice(i, 1);
-        renderSegments();
-      });
-      actions.appendChild(del);
-      row1.appendChild(actions);
-      body.appendChild(row1);
-
-      // texto original detectado
-      if (seg.original) {
-        var orig = document.createElement('div');
-        orig.className = 'seg-orig';
-        orig.innerHTML = 'Original: <b>' + escapeHtml(seg.original) + '</b>';
-        body.appendChild(orig);
-      }
-
-      // traduccion editable (solo tiene sentido si vamos a escribir texto nuevo)
-      if (state.mode === 'translate') {
-        var lab = document.createElement('label');
-        lab.className = 'field';
-        var span = document.createElement('span');
-        span.textContent = 'Subtítulo nuevo (déjalo vacío para solo borrar este)';
-        var ta = document.createElement('textarea');
-        ta.value = seg.translated;
-        ta.rows = 2;
-        ta.addEventListener('input', function () { seg.translated = ta.value; });
-        lab.appendChild(span);
-        lab.appendChild(ta);
-        body.appendChild(lab);
-      }
-
-      // posicion + caja
-      var row2 = document.createElement('div');
-      row2.className = 'seg-row';
-      row2.appendChild(selectField('Posición', seg.position, [
-        { v: 'bottom', t: 'Abajo' }, { v: 'top', t: 'Arriba' }
-      ], function (v) { seg.position = v; }));
-      row2.appendChild(numField('Caja X', Math.round(seg.pixelBox.x0), function (v) {
-        seg.pixelBox.x0 = parseFloat(v) || 0; renderSegments();
-      }));
-      row2.appendChild(numField('Caja Y', Math.round(seg.pixelBox.y0), function (v) {
-        seg.pixelBox.y0 = parseFloat(v) || 0; renderSegments();
-      }));
-      row2.appendChild(numField('Ancho', Math.round(seg.pixelBox.x1 - seg.pixelBox.x0), function (v) {
-        seg.pixelBox.x1 = seg.pixelBox.x0 + (parseFloat(v) || 0); renderSegments();
-      }));
-      row2.appendChild(numField('Alto', Math.round(seg.pixelBox.y1 - seg.pixelBox.y0), function (v) {
-        seg.pixelBox.y1 = seg.pixelBox.y0 + (parseFloat(v) || 0); renderSegments();
-      }));
-      body.appendChild(row2);
-
-      card.appendChild(body);
-      host.appendChild(card);
+    var del = document.createElement('button');
+    del.className = 'ghost small';
+    del.textContent = 'Quitar';
+    del.addEventListener('click', function () {
+      job.segments.splice(i, 1);
+      renderReview();
     });
+    actions.appendChild(del);
+    row1.appendChild(actions);
+    body.appendChild(row1);
+
+    if (seg.original) {
+      var orig = document.createElement('div');
+      orig.className = 'seg-orig';
+      orig.innerHTML = 'Original: <b>' + escapeHtml(seg.original) + '</b>';
+      body.appendChild(orig);
+    }
+
+    if (state.mode === 'translate') {
+      var lab = document.createElement('label');
+      lab.className = 'field';
+      var span = document.createElement('span');
+      span.textContent = 'Subtítulo nuevo (déjalo vacío para solo borrar este)';
+      var ta = document.createElement('textarea');
+      ta.value = seg.translated;
+      ta.rows = 2;
+      ta.addEventListener('input', function () { seg.translated = ta.value; });
+      lab.appendChild(span);
+      lab.appendChild(ta);
+      body.appendChild(lab);
+    }
+
+    var row2 = document.createElement('div');
+    row2.className = 'seg-row';
+    row2.appendChild(selectField('Posición', seg.position, [
+      { v: 'bottom', t: 'Abajo' }, { v: 'top', t: 'Arriba' }
+    ], function (v) { seg.position = v; }));
+    row2.appendChild(numField('Caja X', Math.round(seg.pixelBox.x0), function (v) {
+      seg.pixelBox.x0 = parseFloat(v) || 0; renderReview();
+    }));
+    row2.appendChild(numField('Caja Y', Math.round(seg.pixelBox.y0), function (v) {
+      seg.pixelBox.y0 = parseFloat(v) || 0; renderReview();
+    }));
+    row2.appendChild(numField('Ancho', Math.round(seg.pixelBox.x1 - seg.pixelBox.x0), function (v) {
+      seg.pixelBox.x1 = seg.pixelBox.x0 + (parseFloat(v) || 0); renderReview();
+    }));
+    row2.appendChild(numField('Alto', Math.round(seg.pixelBox.y1 - seg.pixelBox.y0), function (v) {
+      seg.pixelBox.y1 = seg.pixelBox.y0 + (parseFloat(v) || 0); renderReview();
+    }));
+    body.appendChild(row2);
+
+    card.appendChild(body);
+    return card;
   }
 
   function numField(label, value, onChange) {
@@ -516,33 +630,23 @@
 
   // -------------------------------------------------------------- paso 4
 
-  $('btn-render').addEventListener('click', render);
+  $('btn-render').addEventListener('click', renderAll);
 
-  function render() {
-    var status = $('render-status');
-    var btn = $('btn-render');
-    var bar = $('progress-bar');
-    var prog = $('progress');
-
-    if (!state.segments.length) {
-      setStatus(status, 'No hay ningún segmento que procesar.', 'err');
-      return;
-    }
-
-    btn.disabled = true;
-    show(prog);
-    bar.style.width = '0%';
-    setStatus(status, 'Procesando…', 'work');
-
+  function buildOptions(job) {
     var fontSize = parseInt($('opt-fontsize').value, 10);
     var marginV = parseInt($('opt-margin').value, 10);
-
-    var opts = {
-      src: state.src,
-      segments: state.segments,
-      fps: state.fps,
-      audio: (state.audio && state.audio.description) ? state.audio : null,
-      audioSamples: state.audioSamples,
+    var segments = job.segments;
+    if (state.mode === 'remove') {
+      segments = segments.map(function (s) {
+        return Object.assign({}, s, { translated: '' });
+      });
+    }
+    return {
+      src: job.src,
+      segments: segments,
+      fps: job.fps,
+      audio: (job.audio && job.audio.description) ? job.audio : null,
+      audioSamples: job.audioSamples,
       skipRemoval: false,
       inpaintOptions: {
         grow: parseInt($('opt-grow').value, 10),
@@ -552,54 +656,160 @@
       style: {
         fontSize: isFinite(fontSize) && fontSize > 0 ? fontSize : undefined,
         marginV: isFinite(marginV) && marginV >= 0 ? marginV : undefined
-      },
-      onProgress: function (done, total) {
-        var pct = Math.round(done / total * 100);
-        bar.style.width = pct + '%';
-        setStatus(status, 'Procesando fotograma ' + done + ' de ' + total + '…', 'work');
       }
     };
+  }
 
-    // en modo "solo quitar" no se dibuja nada encima
-    if (state.mode === 'remove') {
-      opts.segments = state.segments.map(function (s) {
-        return Object.assign({}, s, { translated: '' });
-      });
+  function renderAll() {
+    var status = $('render-status');
+    var btn = $('btn-render');
+    var bar = $('progress-bar');
+    var prog = $('progress');
+
+    var targets = state.jobs.filter(function (j) {
+      return j.track && j.segments.length;
+    });
+    if (!targets.length) {
+      setStatus(status, 'Ningún video tiene subtítulos marcados.', 'err',
+        'Analiza primero, o abre un video en el paso 3 y añade la zona a mano.');
+      return;
     }
 
+    btn.disabled = true;
+    show(prog);
+    bar.style.width = '0%';
     var t0 = performance.now();
+    var failures = [];
 
-    yieldToUi().then(function () {
-      return SR.Pipeline.process(opts);
-    }).then(function (result) {
-      var blob = result.blob;
-      var secs = ((performance.now() - t0) / 1000).toFixed(1);
-      bar.style.width = '100%';
-      setStatus(status,
-        'Video procesado en ' + secs + ' s · ' + fmtBytes(blob.size),
-        'ok',
-        'Se limpiaron ' + result.cleanedFrames + ' de ' + result.framesWithSegments +
-        ' fotogramas con subtítulo.');
+    series(targets, function (job, i) {
+      job.status = 'procesando';
+      renderJobs();
 
-      if (state.blobUrl) URL.revokeObjectURL(state.blobUrl);
-      state.blobUrl = URL.createObjectURL(blob);
-      $('result').src = state.blobUrl;
-      var dl = $('download');
-      dl.href = state.blobUrl;
-      dl.download = (state.file.name || 'video').replace(/\.[^.]+$/, '') + '-limpio.mp4';
+      var opts = buildOptions(job);
+      opts.onProgress = function (done, total) {
+        // la barra avanza sobre el total del lote, no solo sobre este video
+        var overall = (i + (total ? done / total : 0)) / targets.length;
+        bar.style.width = Math.round(overall * 100) + '%';
+        setStatus(status,
+          'Video ' + (i + 1) + ' de ' + targets.length + ': ' + job.file.name +
+          ' — fotograma ' + done + ' de ' + total, 'work');
+      };
 
-      show($('step-result'));
-      $('step-result').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-    }).catch(function (err) {
-      setStatus(status, 'Falló el procesamiento.', 'err', String(err.message || err));
-      hide(prog);
+      return yieldToUi()
+        .then(function () { return SR.Pipeline.process(opts); })
+        .then(function (result) {
+          job.blob = result.blob;
+          job.cleaned = result.cleanedFrames;
+          job.framesWithSegments = result.framesWithSegments;
+          if (job.blobUrl) URL.revokeObjectURL(job.blobUrl);
+          job.blobUrl = URL.createObjectURL(result.blob);
+          job.status = 'hecho';
+        })
+        .catch(function (err) {
+          job.status = 'error';
+          job.error = String(err && err.message || err);
+          failures.push(job);
+        })
+        .then(function () {
+          renderJobs();
+          renderResults();
+          return yieldToUi();
+        });
     }).then(function () {
+      var secs = ((performance.now() - t0) / 1000).toFixed(1);
+      var ok = doneJobs().length;
+      bar.style.width = '100%';
+      if (!ok) {
+        setStatus(status, 'No se pudo procesar ningún video.', 'err',
+          failures[0] ? failures[0].error : '');
+      } else if (failures.length) {
+        setStatus(status, ok + ' de ' + targets.length + ' procesados en ' + secs + ' s.', 'err',
+          failures.length + ' con problemas: ' + failures[0].error);
+      } else {
+        setStatus(status, ok + ' video(s) procesados en ' + secs + ' s.', 'ok');
+      }
+      if (ok) {
+        show($('step-result'));
+        $('step-result').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
       btn.disabled = false;
     });
   }
 
+  // -------------------------------------------------------------- resultados
+
+  function renderResults() {
+    var host = $('results');
+    host.innerHTML = '';
+    var done = doneJobs();
+    $('btn-zip').disabled = done.length < 1;
+
+    done.forEach(function (job) {
+      var row = document.createElement('div');
+      row.className = 'result';
+
+      var vid = document.createElement('video');
+      vid.src = job.blobUrl;
+      vid.controls = true;
+      vid.playsInline = true;
+      vid.setAttribute('playsinline', '');
+      row.appendChild(vid);
+
+      var info = document.createElement('div');
+      info.className = 'result-info';
+      var n = document.createElement('div');
+      n.className = 'result-name';
+      n.textContent = outName(job);
+      info.appendChild(n);
+
+      var m = document.createElement('div');
+      m.className = 'result-meta';
+      m.textContent = fmtBytes(job.blob.size) + ' · se limpiaron ' + job.cleaned +
+                      ' de ' + job.framesWithSegments + ' fotogramas con subtítulo';
+      info.appendChild(m);
+
+      var a = document.createElement('a');
+      a.className = 'primary';
+      a.href = job.blobUrl;
+      a.download = outName(job);
+      a.textContent = 'Descargar';
+      info.appendChild(a);
+
+      row.appendChild(info);
+      host.appendChild(row);
+    });
+  }
+
+  $('btn-zip').addEventListener('click', function () {
+    var status = $('zip-status');
+    var done = doneJobs();
+    if (!done.length) return;
+
+    var btn = $('btn-zip');
+    btn.disabled = true;
+    setStatus(status, 'Empaquetando ' + done.length + ' video(s)…', 'work');
+
+    SR.makeZip(done.map(function (j) {
+      return { name: outName(j), blob: j.blob };
+    })).then(function (zip) {
+      if (state.zipUrl) URL.revokeObjectURL(state.zipUrl);
+      state.zipUrl = URL.createObjectURL(zip);
+      var a = document.createElement('a');
+      a.href = state.zipUrl;
+      a.download = 'videos-limpios.zip';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setStatus(status, 'ZIP listo · ' + fmtBytes(zip.size), 'ok',
+        'Si el navegador no lo descargó solo, vuelve a tocar el botón.');
+    }).catch(function (err) {
+      setStatus(status, 'No se pudo crear el ZIP.', 'err', String(err && err.message || err));
+    }).then(function () { btn.disabled = false; });
+  });
+
   $('btn-restart').addEventListener('click', function () {
-    if (state.blobUrl) URL.revokeObjectURL(state.blobUrl);
+    state.jobs.forEach(function (j) { if (j.blobUrl) URL.revokeObjectURL(j.blobUrl); });
+    if (state.zipUrl) URL.revokeObjectURL(state.zipUrl);
     location.reload();
   });
 })();

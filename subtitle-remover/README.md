@@ -1,7 +1,8 @@
 # Limpiador de subtítulos
 
-Quita los subtítulos incrustados ("quemados") de un video reconstruyendo el fondo, y
-escribe encima subtítulos nuevos traducidos.
+Quita los subtítulos incrustados ("quemados") de tus videos reconstruyendo el fondo, y
+escribe encima subtítulos nuevos traducidos. Acepta **varios videos a la vez** y los
+deja descargar sueltos o todos juntos en un ZIP.
 
 Es el mismo método que se validó a mano con OpenCV/ffmpeg, reimplementado para correr
 entero en el navegador. **El video nunca se sube a ningún servidor**: solo se envían
@@ -33,19 +34,32 @@ La clave queda solo en el servidor de Netlify. El navegador nunca la ve: llama a
 
 ## Cómo se usa
 
-1. **Elige el video** — MP4 (H.264/AAC, que es lo que sale de TikTok, Reels o Shorts).
+1. **Elige los videos** — MP4 (H.264/AAC, que es lo que sale de TikTok, Reels o Shorts).
+   Puedes soltar varios de una vez, o ir añadiéndolos.
 2. **Elige qué hacer:**
    - **Quitar los subtítulos y traducirlos** — borra el texto original y escribe la
      traducción en su lugar (el idioma es configurable, no solo español).
    - **Solo quitar los subtítulos** — deja el video limpio, sin nada encima. En este
      modo a Claude solo se le pide localizar el texto, no traducirlo.
-3. **Analiza** — Claude mira unos fotogramas y ubica los subtítulos.
-4. **Revisa** — puedes corregir la traducción, los tiempos, la caja o la posición de
-   cualquier segmento, desactivar los que no quieras, o añadir uno a mano.
-5. **Procesa** y **descarga el MP4.**
+3. **Analiza** — Claude mira unos fotogramas de cada video y ubica los subtítulos.
+4. **Revisa** — cada video se despliega por separado: puedes corregir la traducción,
+   los tiempos, la caja o la posición de cualquier segmento, desactivar los que no
+   quieras, o añadir uno a mano.
+5. **Procesa todo** y descarga cada MP4, o **todos juntos en un ZIP**.
 
 En modo traducción, si dejas vacío el campo de un subtítulo, ese tramo concreto solo
 se borra.
+
+### Sobre el lote
+
+- Los videos se procesan **en serie, nunca en paralelo**: decodificar y recodificar se
+  come CPU y memoria, y hacer dos a la vez multiplica el pico justo donde más duele
+  (el teléfono).
+- Cada video lleva su propio estado y su propio error. Si uno falla —archivo ilegible,
+  la API no responde— **los demás siguen**; el que falló lo dice en su fila.
+- El ZIP se arma en el navegador en modo *store* (sin comprimir), porque los MP4 ya
+  vienen comprimidos. En el móvil además es la única forma fiable de bajarlo todo: los
+  navegadores bloquean las descargas múltiples seguidas.
 
 ---
 
@@ -69,7 +83,7 @@ El audio **no se recodifica**: las muestras AAC originales se copian tal cual.
 
 ## Cómo funciona
 
-Tres pasadas sobre el video:
+Tres pasadas sobre cada video:
 
 ### Decodificación: dos caminos
 
@@ -137,7 +151,8 @@ reconstruida y se respeta la composición del video.
   Ayuda bajar la cobertura a *Ajustada*.
 - **Videos largos.** Todo ocurre en memoria. Pensado para clips de redes sociales
   (hasta ~60 s). Uno de 9 s a 576×1024 tarda unos 25 s en una máquina normal.
-- **iPhone y iPad**, como se explica arriba: hace falta una computadora.
+- **iPhone y iPad**: funciona por el camino lento, pero con varios videos grandes a
+  la vez el navegador puede quedarse sin memoria. Ve de pocos en pocos.
 - **Tiempo de la función.** Las funciones de Netlify cortan a los ~10 s. Si el análisis
   falla por tiempo, baja *«Fotogramas de análisis»* a 6, o añade los segmentos a mano.
 - El texto **que forma parte de la escena** (carteles, envases) no se toca — es lo
@@ -156,6 +171,7 @@ public/
   js/inpaint.js                 detección del texto y construcción de la máscara
   js/telea.js                   relleno por Fast Marching Method (port de OpenCV)
   js/overlay.js                 dibujo de los subtítulos nuevos
+  js/zip.js                     empaquetado ZIP (store) para descargarlo todo
   js/video.js                   demux, decode, encode, mux
   js/pipeline.js                las tres pasadas
   js/app.js                     interfaz

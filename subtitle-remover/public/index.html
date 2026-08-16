@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Limpiador de subtítulos</title>
-<meta name="description" content="Quita los subtítulos incrustados de un video y los reemplaza por subtítulos traducidos.">
+<meta name="description" content="Quita los subtítulos incrustados de tus videos y los reemplaza por subtítulos traducidos.">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎬</text></svg>">
 <link rel="stylesheet" href="/css/app.css">
 </head>
@@ -13,7 +13,7 @@
 <header class="top">
   <div class="wrap">
     <h1>Limpiador de subtítulos</h1>
-    <p class="lede">Borra el texto incrustado en el video reconstruyendo el fondo, y escribe encima los subtítulos traducidos.</p>
+    <p class="lede">Borra el texto incrustado en el video reconstruyendo el fondo, y escribe encima los subtítulos traducidos. Puedes cargar varios videos a la vez.</p>
   </div>
 </header>
 
@@ -24,18 +24,19 @@
 
   <!-- ---------------------------------------------------------------- paso 1 -->
   <section class="step" id="step-file">
-    <div class="step-head"><span class="num">1</span><h2>Elige el video</h2></div>
+    <div class="step-head"><span class="num">1</span><h2>Elige los videos</h2></div>
 
-    <div id="drop" class="drop" tabindex="0" role="button" aria-label="Seleccionar video">
-      <input type="file" id="file" accept="video/mp4,video/quicktime,video/*" hidden>
+    <div id="drop" class="drop" tabindex="0" role="button" aria-label="Seleccionar videos">
+      <input type="file" id="file" accept="video/mp4,video/quicktime,video/*" multiple hidden>
       <div class="drop-inner">
         <div class="drop-icon">🎬</div>
-        <p class="drop-main">Arrastra un MP4 aquí o haz clic para elegirlo</p>
-        <p class="drop-sub">El video se procesa en tu navegador. No se sube a ningún servidor.</p>
+        <p class="drop-main">Arrastra tus MP4 aquí o haz clic para elegirlos</p>
+        <p class="drop-sub">Puedes soltar varios de una vez. Se procesan en tu navegador, no se suben a ningún servidor.</p>
       </div>
     </div>
 
-    <div id="file-info" class="info-card hidden"></div>
+    <div id="job-list" class="jobs"></div>
+    <div id="file-status" class="status hidden"></div>
   </section>
 
   <!-- ---------------------------------------------------------------- paso 2 -->
@@ -74,7 +75,6 @@
         </select>
       </label>
       <button id="btn-analyze" class="primary">Analizar con Claude</button>
-      <button id="btn-manual" class="ghost">Añadir segmento a mano</button>
     </div>
 
     <p class="hint" id="analyze-hint">
@@ -88,13 +88,12 @@
   <!-- ---------------------------------------------------------------- paso 3 -->
   <section class="step hidden" id="step-segments">
     <div class="step-head"><span class="num">3</span><h2>Revisa los subtítulos</h2></div>
-    <div id="segments" class="segments"></div>
-    <button id="btn-add" class="ghost small">+ Añadir otro segmento</button>
+    <div id="review"></div>
   </section>
 
   <!-- ---------------------------------------------------------------- paso 4 -->
   <section class="step hidden" id="step-render">
-    <div class="step-head"><span class="num">4</span><h2>Procesa el video</h2></div>
+    <div class="step-head"><span class="num">4</span><h2>Procesa</h2></div>
 
     <details class="advanced">
       <summary>Ajustes avanzados</summary>
@@ -130,7 +129,7 @@
       </div>
     </details>
 
-    <button id="btn-render" class="primary big">Procesar video</button>
+    <button id="btn-render" class="primary big">Procesar todo</button>
 
     <div id="render-status" class="status hidden"></div>
     <div class="progress hidden" id="progress"><div class="bar" id="progress-bar"></div></div>
@@ -139,17 +138,18 @@
   <!-- ---------------------------------------------------------------- salida -->
   <section class="step hidden" id="step-result">
     <div class="step-head"><span class="num">✓</span><h2>Listo</h2></div>
-    <video id="result" controls playsinline></video>
+    <div id="results" class="results"></div>
     <div class="result-actions">
-      <a id="download" class="primary" download="video-limpio.mp4">Descargar MP4</a>
+      <button id="btn-zip" class="primary">Descargar todos (ZIP)</button>
       <button id="btn-restart" class="ghost">Empezar de nuevo</button>
     </div>
+    <div id="zip-status" class="status hidden"></div>
   </section>
 
 </main>
 
 <footer class="wrap foot">
-  <p>El video nunca sale de tu navegador. Solo se envían fotogramas sueltos a Claude para detectar y traducir el texto.</p>
+  <p>Los videos nunca salen de tu navegador. Solo se envían fotogramas sueltos a Claude para detectar y traducir el texto.</p>
 </footer>
 
 <script src="/vendor/mp4box.all.min.js"></script>
@@ -157,6 +157,7 @@
 <script src="/js/telea.js"></script>
 <script src="/js/inpaint.js"></script>
 <script src="/js/overlay.js"></script>
+<script src="/js/zip.js"></script>
 <script src="/js/video.js"></script>
 <script src="/js/pipeline.js"></script>
 <script src="/js/app.js"></script>
