@@ -13,31 +13,49 @@
 const MODEL = process.env.CLAUDE_MODEL || 'claude-sonnet-5';
 const MAX_FRAMES = 16;
 
-const BASE_PROMPT = `Eres un analista de video especializado en subtitulos incrustados (quemados en la imagen).
+const BASE_PROMPT = `Eres un analista de video especializado en elementos SOBREPUESTOS en edicion:
+subtitulos quemados en la imagen y cualquier otro anadido grafico.
 
 Recibes fotogramas en orden cronologico, cada uno con su marca de tiempo en segundos.
 
+Hay DOS tipos de elemento, y cada segmento debe declarar cual es en el campo "kind":
+
+"subtitle" — texto de subtitulo sobrepuesto, normalmente claro con contorno oscuro y
+  sin fondo propio. Es el pie de video de toda la vida.
+
+"overlay" — cualquier OTRO anadido del editor, con fondo o forma propia:
+  - recuadros de comentario o de respuesta ("responder a @fulano"), con avatar y nombre
+  - stickers, globos de dialogo, bocadillos, etiquetas, chapas, flechas, emojis grandes
+  - rotulos de producto, precios, logos de marca puestos en edicion
+  - marcas de agua y nombres de usuario (@usuario) sobreimpresos
+  - cajas de "link en bio", banners, barras de progreso dibujadas
+  Todo esto hay que BORRARLO, no traducirlo.
+
 Tu tarea:
-1. Localizar el texto de subtitulo SOBREPUESTO por el editor del video.
-2. Agrupar los fotogramas que muestran el MISMO subtitulo en un solo segmento.
-3. Transcribir el texto original exactamente.
+1. Localizar TODOS los elementos sobrepuestos, de los dos tipos.
+2. Agrupar los fotogramas que muestran el MISMO elemento en un solo segmento.
+3. Transcribir su texto en "original" (si el elemento no tiene texto, cadena vacia).
 __TRANSLATE_STEP__
 Reglas importantes:
-- IGNORA texto que forma parte de la escena real: carteles, cuadros, ropa, envases,
-  logos de productos, marcas de agua de la plataforma, nombres de usuario (@usuario).
-  Solo interesa el texto sobrepuesto en edicion.
-- La caja debe cubrir TODAS las lineas del subtitulo, con un poco de margen.
+- IGNORA lo que forma parte de la escena real y estaba delante de la camara: carteles
+  de la calle, cuadros colgados, texto en la ropa, envases y etiquetas de productos
+  fisicos, pantallas encendidas dentro de la escena. Solo interesa lo anadido despues.
+- Ante la duda, mira si el elemento se mueve con la escena (entonces es real) o se queda
+  clavado en el mismo sitio de la pantalla (entonces es sobrepuesto).
+- Para "overlay" la caja debe cubrir el elemento COMPLETO: fondo, borde, avatar, icono,
+  la colita del bocadillo y un pequeno margen. Si te quedas corto queda un recorte feo.
+- Para "subtitle" la caja debe cubrir TODAS las lineas del texto, con un poco de margen.
 - Coordenadas normalizadas 0-1 respecto al fotograma completo: x,y = esquina superior
   izquierda; w,h = ancho y alto.
 - start/end en segundos. Usa el tiempo del primer y del ultimo fotograma donde ves
-  ese subtitulo; si aparece entre dos fotogramas, estima. El sistema afina los cortes
+  ese elemento; si aparece entre dos fotogramas, estima. El sistema afina los cortes
   despues, asi que un margen pequeno esta bien.
-- "position": "top" si el subtitulo esta en la mitad superior, "bottom" si esta en la inferior.
+- "position": "top" si esta en la mitad superior, "bottom" si esta en la inferior.
 __TRANSLATE_RULE__
-- Si no hay ningun subtitulo incrustado, devuelve una lista vacia.
+- Si no hay nada sobrepuesto, devuelve una lista vacia.
 
 Responde UNICAMENTE con JSON valido, sin explicaciones ni bloques de codigo:
-{"segments":[{"start":0,"end":3.7,"box":{"x":0.08,"y":0.66,"w":0.85,"h":0.09},"position":"bottom","original":"...","translated":"..."}]}`;
+{"segments":[{"kind":"subtitle","start":0,"end":3.7,"box":{"x":0.08,"y":0.66,"w":0.85,"h":0.09},"position":"bottom","original":"...","translated":"..."}]}`;
 
 /**
  * En modo "remove" solo hay que localizar el texto, no traducirlo: se le pide a
@@ -48,10 +66,13 @@ function buildSystemPrompt(mode) {
   const translating = mode !== 'remove';
   return BASE_PROMPT
     .replace('__TRANSLATE_STEP__', translating
-      ? '4. Traducirlo al idioma pedido, de forma natural y CORTA (que quepa en 1-2 lineas de video vertical).\n'
+      ? '4. Solo para "subtitle": traducirlo al idioma pedido, de forma natural y CORTA\n' +
+        '   (que quepa en 1-2 lineas de video vertical). Los "overlay" se borran sin\n' +
+        '   reemplazo, asi que en ellos "translated" va vacio.\n'
       : '4. NO traduzcas nada: deja "translated" siempre como cadena vacia "".\n')
     .replace('__TRANSLATE_RULE__', translating
-      ? '- En la traduccion NO incluyas emojis.'
+      ? '- En la traduccion NO incluyas emojis.\n' +
+        '- "translated" solo se rellena en los segmentos de tipo "subtitle".'
       : '- El campo "translated" debe ir vacio ("") en todos los segmentos.');
 }
 
@@ -194,19 +215,24 @@ export default async (req) => {
   // Normalizamos y descartamos lo que venga incompleto.
   const segments = parsed.segments
     .filter((s) => s && s.box && typeof s.box.x === 'number')
-    .map((s) => ({
-      start: Math.max(0, Number(s.start) || 0),
-      end: Math.max(0, Number(s.end) || 0),
-      box: {
-        x: clamp01(s.box.x),
-        y: clamp01(s.box.y),
-        w: clamp01(s.box.w),
-        h: clamp01(s.box.h)
-      },
-      position: s.position === 'top' ? 'top' : 'bottom',
-      original: String(s.original || ''),
-      translated: String(s.translated || '')
-    }))
+    .map((s) => {
+      const kind = s.kind === 'overlay' ? 'overlay' : 'subtitle';
+      return {
+        kind,
+        start: Math.max(0, Number(s.start) || 0),
+        end: Math.max(0, Number(s.end) || 0),
+        box: {
+          x: clamp01(s.box.x),
+          y: clamp01(s.box.y),
+          w: clamp01(s.box.w),
+          h: clamp01(s.box.h)
+        },
+        position: s.position === 'top' ? 'top' : 'bottom',
+        original: String(s.original || ''),
+        // un overlay se borra y ya: no se escribe nada en su lugar
+        translated: kind === 'overlay' ? '' : String(s.translated || '')
+      };
+    })
     .filter((s) => s.end > s.start && s.box.w > 0.01 && s.box.h > 0.005)
     .sort((a, b) => a.start - b.start);
 

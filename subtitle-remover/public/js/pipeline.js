@@ -71,9 +71,41 @@
     });
   }
 
+  /** Rejilla de luminancia submuestreada de una caja: comparar frames sale barato. */
+  function lumaGrid(data, W, box, step) {
+    var w = Math.ceil((box.x1 - box.x0) / step);
+    var h = Math.ceil((box.y1 - box.y0) / step);
+    var out = new Uint8Array(w * h);
+    var k = 0;
+    for (var y = box.y0; y < box.y1; y += step) {
+      var row = y * W;
+      for (var x = box.x0; x < box.x1; x += step) {
+        var i = (row + x) * 4;
+        out[k++] = (data[i] * 77 + data[i + 1] * 150 + data[i + 2] * 29) >> 8;
+      }
+    }
+    return out;
+  }
+
+  function meanAbsDiff(a, b) {
+    if (!a || !b || a.length !== b.length) return -1;
+    var s = 0;
+    for (var i = 0; i < a.length; i++) s += Math.abs(a[i] - b[i]);
+    return s / a.length;
+  }
+
   /**
-   * Pasada 2: puntaje de texto por frame dentro de la caja de cada segmento.
-   * Devuelve los segmentos con firstFrame/lastFrame exactos.
+   * Pasada 2: localizar el primer y el ultimo fotograma de cada elemento.
+   *
+   * Segun el tipo se mide una cosa u otra:
+   *
+   *  subtitle — pixeles de texto (claro con contorno oscuro) dentro de la caja.
+   *  overlay  — parecido con una PLANTILLA: se toma la caja en un fotograma donde
+   *             Claude dice que el elemento esta, y se compara con la misma caja en
+   *             cada fotograma. Un sticker opaco es identico mientras se ve, y muy
+   *             distinto cuando no esta porque debajo se ve el video. Buscar texto
+   *             aqui no sirve: un recuadro de comentario es fondo claro con letras
+   *             oscuras, justo al reves que un subtitulo.
    */
   Pipeline.refine = function (src, segments, onProgress) {
     var track = src.track;
@@ -81,7 +113,21 @@
     var canvas = makeCanvas(W, H);
     var ctx = canvas.getContext('2d', { willReadFrequently: true });
 
-    var scores = segments.map(function () { return []; });
+    var scores = segments.map(function () { return []; });   // subtitle
+    var grids = segments.map(function () { return []; });    // overlay
+    // Para la plantilla del overlay se usa el CENTRO de la caja, no la caja entera:
+    // los bordes llevan margen de sobra y ahi se ve el video moviendose, lo que
+    // dispara la diferencia en cada fotograma y arruina la comparacion.
+    var boxes = segments.map(function (seg) {
+      var b = SR.clampBox(seg.pixelBox, W, H);
+      if (seg.kind !== 'overlay') return b;
+      var insetX = Math.max(3, Math.round((b.x1 - b.x0) * 0.15));
+      var insetY = Math.max(3, Math.round((b.y1 - b.y0) * 0.15));
+      return SR.clampBox({
+        x0: b.x0 + insetX, y0: b.y0 + insetY,
+        x1: b.x1 - insetX, y1: b.y1 - insetY
+      }, W, H);
+    });
     var times = [];
 
     return SR.Video.decodeAll(src, function (source, idx, info) {
@@ -97,7 +143,11 @@
         for (var s = 0; s < segments.length; s++) {
           var seg = segments[s];
           if (t < seg.start - 1.0 || t > seg.end + 1.0) { scores[s][idx] = 0; continue; }
-          scores[s][idx] = SR.textScore(img.data, W, H, seg.pixelBox);
+          if (seg.kind === 'overlay') {
+            grids[s][idx] = lumaGrid(img.data, W, boxes[s], 2);
+          } else {
+            scores[s][idx] = SR.textScore(img.data, W, H, seg.pixelBox);
+          }
         }
       } else {
         for (var s2 = 0; s2 < segments.length; s2++) scores[s2][idx] = 0;
@@ -106,6 +156,45 @@
       return null;
     }, onProgress).then(function (frameCount) {
       segments.forEach(function (seg, si) {
+        var fallback = function () {
+          seg.firstFrame = frameIndexAt(times, frameCount, seg.start, true);
+          seg.lastFrame = frameIndexAt(times, frameCount, seg.end, false);
+          seg.refined = false;
+        };
+
+        if (seg.kind === 'overlay') {
+          // plantilla: el fotograma mas cercano al centro del rango que dio Claude
+          var mid = (seg.start + seg.end) / 2;
+          var seedO = -1, bestD = Infinity;
+          for (var k = 0; k < frameCount; k++) {
+            if (!grids[si][k]) continue;
+            var d = Math.abs(times[k] - mid);
+            if (d < bestD) { bestD = d; seedO = k; }
+          }
+          if (seedO < 0) return fallback();
+
+          var tpl = grids[si][seedO];
+          var sim = [], maxSim = 0;
+          for (var m = 0; m < frameCount; m++) {
+            sim[m] = grids[si][m] ? meanAbsDiff(grids[si][m], tpl) : -1;
+            if (sim[m] > maxSim) maxSim = sim[m];
+          }
+          // Si nunca se despega de la plantilla no hay contraste para decidir:
+          // puede que el elemento dure todo el rango, o que el fondo no cambie.
+          if (maxSim < 6) return fallback();
+
+          var thrO = Math.min(12, Math.max(3, maxSim * 0.25));
+          var ao = seedO, bo = seedO;
+          while (ao - 1 >= 0 && sim[ao - 1] >= 0 && sim[ao - 1] <= thrO) ao--;
+          while (bo + 1 < frameCount && sim[bo + 1] >= 0 && sim[bo + 1] <= thrO) bo++;
+          seg.firstFrame = ao;
+          seg.lastFrame = bo;
+          seg.refined = true;
+          seg.start = times[ao];
+          seg.end = times[bo] + 0.001;
+          return;
+        }
+
         var sc = scores[si];
 
         // frame semilla: el de mayor puntaje dentro del rango que dio Claude.
@@ -118,13 +207,8 @@
           if (t >= seg.start && t <= seg.end && sc[j] > seedScore) { seedScore = sc[j]; seed = j; }
         }
         var threshold = Math.max(100, seedScore * 0.20);
-        if (seed < 0 || seedScore < 100) {
-          // no se encontro texto: se respeta lo que dijo Claude
-          seg.firstFrame = frameIndexAt(times, frameCount, seg.start, true);
-          seg.lastFrame = frameIndexAt(times, frameCount, seg.end, false);
-          seg.refined = false;
-          return;
-        }
+        if (seed < 0 || seedScore < 100) return fallback();
+
         var a = seed, b = seed;
         while (a - 1 >= 0 && sc[a - 1] >= threshold) a--;
         while (b + 1 < frameCount && sc[b + 1] >= threshold) b++;
@@ -195,11 +279,17 @@
         var touched = false;
         for (var a = 0; a < active.length; a++) {
           var segA = active[a];
-          // ajustamos la caja al texto de ESTE frame: los subtitulos se mueven o
-          // cambian de largo, y una caja fija inpaintaria de mas.
-          var box = SR.tightenBox(img.data, W, H, segA.pixelBox, 10, inpaintOpts);
-          if (!box) continue;
-          var built = SR.buildMask(img.data, W, H, box, inpaintOpts);
+          var built;
+          if (segA.kind === 'overlay') {
+            // opaco: no hay glifos que buscar, se quita el rectangulo entero
+            built = SR.buildBoxMask(W, H, segA.pixelBox);
+          } else {
+            // ajustamos la caja al texto de ESTE frame: los subtitulos se mueven o
+            // cambian de largo, y una caja fija inpaintaria de mas.
+            var box = SR.tightenBox(img.data, W, H, segA.pixelBox, 10, inpaintOpts);
+            if (!box) continue;
+            built = SR.buildMask(img.data, W, H, box, inpaintOpts);
+          }
           if (SR.inpaintTelea(img.data, W, H, built, inpaintOpts.radius)) touched = true;
         }
         if (touched) { ctx.putImageData(img, 0, 0); cleanedFrames++; }

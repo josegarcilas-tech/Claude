@@ -1,8 +1,9 @@
 # Limpiador de subtítulos
 
-Quita los subtítulos incrustados ("quemados") de tus videos reconstruyendo el fondo, y
-escribe encima subtítulos nuevos traducidos. Acepta **varios videos a la vez** y los
-deja descargar sueltos o todos juntos en un ZIP.
+Quita lo que se añadió en edición sobre tus videos —subtítulos quemados, recuadros de
+comentario, stickers, etiquetas, marcas de agua— reconstruyendo el fondo, y escribe
+encima subtítulos nuevos traducidos. Acepta **varios videos a la vez** y los deja
+descargar sueltos o todos juntos en un ZIP.
 
 Es el mismo método que se validó a mano con OpenCV/ffmpeg, reimplementado para correr
 entero en el navegador. **El video nunca se sube a ningún servidor**: solo se envían
@@ -41,7 +42,7 @@ La clave queda solo en el servidor de Netlify. El navegador nunca la ve: llama a
      traducción en su lugar (el idioma es configurable, no solo español).
    - **Solo quitar los subtítulos** — deja el video limpio, sin nada encima. En este
      modo a Claude solo se le pide localizar el texto, no traducirlo.
-3. **Analiza** — Claude mira unos fotogramas de cada video y ubica los subtítulos.
+3. **Analiza** — Claude mira unos fotogramas de cada video y ubica todo lo sobrepuesto.
 4. **Revisa** — cada video se despliega por separado: puedes corregir la traducción,
    los tiempos, la caja o la posición de cualquier segmento, desactivar los que no
    quieras, o añadir uno a mano.
@@ -49,6 +50,25 @@ La clave queda solo en el servidor de Netlify. El navegador nunca la ve: llama a
 
 En modo traducción, si dejas vacío el campo de un subtítulo, ese tramo concreto solo
 se borra.
+
+### Dos tipos de elemento
+
+Cada segmento detectado se clasifica, y de ahí depende cómo se borra. Puedes cambiar el
+tipo a mano en el paso 3 si Claude se equivoca.
+
+| Tipo | Qué es | Cómo se borra | ¿Se traduce? |
+|---|---|---|---|
+| **Subtítulo** | texto sobrepuesto, claro con contorno oscuro y sin fondo propio | se detectan los glifos y se quitan solo esos píxeles | sí |
+| **Recuadro** | recuadros de comentario, stickers, bocadillos, etiquetas, logos puestos en edición, marcas de agua, `@usuario` | se quita el rectángulo entero | no, solo se borra |
+
+La diferencia importa. Un recuadro de comentario es **fondo claro con letras oscuras**,
+justo al revés que un subtítulo: buscarle glifos no funciona, y además su fondo tapa la
+imagen igual que el texto. Ahí no hay nada que afinar — lo que sobra es el rectángulo
+completo.
+
+Lo que estaba **de verdad delante de la cámara** (carteles de la calle, cuadros, texto
+en la ropa, envases de productos) no se toca. La pista para distinguirlo: lo real se
+mueve con la escena, lo sobrepuesto se queda clavado en el mismo sitio de la pantalla.
 
 ### Sobre el lote
 
@@ -102,7 +122,7 @@ en el mismo fotograma que por el camino rápido.
 | Pasada | Qué hace |
 |---|---|
 | **1. Muestreo** | Saca N fotogramas repartidos y los manda a Claude (visión) para ubicar, transcribir y traducir los subtítulos. |
-| **2. Refinado** | Mide fotograma por fotograma dónde hay texto de verdad, para clavar el primer y el último fotograma de cada subtítulo. Claude da tiempos aproximados; los cortes tienen que ser exactos o queda un parpadeo con el texto viejo. |
+| **2. Refinado** | Clava el primer y el último fotograma de cada elemento; Claude da tiempos aproximados y un corte flojo deja un parpadeo. En los subtítulos se miden los píxeles de texto. En los recuadros se usa una **plantilla**: se toma la caja en un fotograma donde el elemento está y se compara con la misma caja en todos los demás — un sticker opaco es idéntico mientras se ve, y muy distinto cuando no está porque debajo se ve el video. La plantilla se toma del **centro** de la caja: en los bordes hay margen de sobra y ahí se ve el video moviéndose. |
 | **3. Procesado** | Borra, dibuja el subtítulo nuevo y recodifica. |
 
 ### El borrado
@@ -149,6 +169,9 @@ reconstruida y se respeta la composición del video.
   marco, una reja), la reconstrucción los difumina. Se nota sobre todo cuando la
   traducción es más corta que el texto original y deja parte del área a la vista.
   Ayuda bajar la cobertura a *Ajustada*.
+- **Los recuadros grandes dejan una zona lisa.** Debajo de un sticker opaco no hay
+  información que recuperar: lo que quede ahí es una interpolación del entorno. Cuanto
+  más grande el recuadro, más se nota. Es el límite del método, no un fallo.
 - **Videos largos.** Todo ocurre en memoria. Pensado para clips de redes sociales
   (hasta ~60 s). Uno de 9 s a 576×1024 tarda unos 25 s en una máquina normal.
 - **iPhone y iPad**: funciona por el camino lento, pero con varios videos grandes a

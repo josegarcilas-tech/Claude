@@ -269,10 +269,11 @@
         ? 'Analizar con Claude'
         : 'Detectar subtítulos con Claude';
       $('analyze-hint').textContent = translating
-        ? 'Claude mira los fotogramas, ubica los subtítulos incrustados, los transcribe y los traduce. ' +
-          'Después puedes corregir cualquier cosa antes de procesar.'
-        : 'Claude solo ubica los subtítulos incrustados; no se escribirá texto nuevo. ' +
-          'Después puedes ajustar las zonas antes de procesar.';
+        ? 'Claude ubica todo lo añadido en edición: subtítulos, recuadros de comentario, ' +
+          'stickers, etiquetas y marcas de agua. Los subtítulos se traducen; los recuadros ' +
+          'solo se borran. Después puedes corregir cualquier cosa.'
+        : 'Claude ubica todo lo añadido en edición —subtítulos, recuadros, stickers, marcas ' +
+          'de agua— y se borra todo, sin escribir nada encima.';
       renderReview();
     });
   });
@@ -360,11 +361,16 @@
 
   function toInternalSegment(job, s) {
     var W = job.track.width, H = job.track.height;
-    // margen extra: la caja de Claude suele ir justa y el contorno del texto sobresale
-    var padX = W * 0.02, padY = H * 0.012;
+    var overlay = s.kind === 'overlay';
+    // Margen extra sobre la caja de Claude. Para el texto hace falta bastante: el
+    // contorno del glifo sobresale. Para un recuadro se pide poco, porque el margen
+    // solo anade fondo que habria que reconstruir sin necesidad.
+    var padX = overlay ? W * 0.006 : W * 0.02;
+    var padY = overlay ? H * 0.004 : H * 0.012;
     var top = s.box.y * H;
     var bottom = (s.box.y + s.box.h) * H;
     return {
+      kind: overlay ? 'overlay' : 'subtitle',
       start: s.start,
       end: s.end,
       pixelBox: {
@@ -389,6 +395,7 @@
   function makeBlankSegment(job) {
     var W = job.track.width, H = job.track.height;
     var seg = {
+      kind: 'subtitle',
       start: 0,
       end: Math.min(3, job.duration || 3),
       pixelBox: { x0: W * 0.06, y0: H * 0.62, x1: W * 0.94, y1: H * 0.78 },
@@ -523,6 +530,11 @@
     }));
     row1.appendChild(times);
 
+    var kindBadge = document.createElement('span');
+    kindBadge.className = 'badge kind-' + seg.kind;
+    kindBadge.textContent = seg.kind === 'overlay' ? 'recuadro' : 'subtítulo';
+    row1.appendChild(kindBadge);
+
     var badge = document.createElement('span');
     badge.className = 'badge' + (seg.refined ? '' : ' approx');
     badge.textContent = seg.refined
@@ -560,7 +572,7 @@
       body.appendChild(orig);
     }
 
-    if (state.mode === 'translate') {
+    if (state.mode === 'translate' && seg.kind !== 'overlay') {
       var lab = document.createElement('label');
       lab.className = 'field';
       var span = document.createElement('span');
@@ -576,6 +588,9 @@
 
     var row2 = document.createElement('div');
     row2.className = 'seg-row';
+    row2.appendChild(selectField('Tipo', seg.kind, [
+      { v: 'subtitle', t: 'Subtítulo' }, { v: 'overlay', t: 'Recuadro / sticker' }
+    ], function (v) { seg.kind = v; renderReview(); }));
     row2.appendChild(selectField('Posición', seg.position, [
       { v: 'bottom', t: 'Abajo' }, { v: 'top', t: 'Arriba' }
     ], function (v) { seg.position = v; }));
@@ -635,12 +650,13 @@
   function buildOptions(job) {
     var fontSize = parseInt($('opt-fontsize').value, 10);
     var marginV = parseInt($('opt-margin').value, 10);
-    var segments = job.segments;
-    if (state.mode === 'remove') {
-      segments = segments.map(function (s) {
+    var segments = job.segments.map(function (s) {
+      // un recuadro se borra y ya; en modo "solo quitar", todo se borra sin reemplazo
+      if (s.kind === 'overlay' || state.mode === 'remove') {
         return Object.assign({}, s, { translated: '' });
-      });
-    }
+      }
+      return s;
+    });
     return {
       src: job.src,
       segments: segments,

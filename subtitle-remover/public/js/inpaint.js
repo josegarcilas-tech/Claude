@@ -328,6 +328,23 @@
   // se nota como una mancha borrosa. Telea extrapola siguiendo el frente, asi que
   // prolonga las lineas y la textura del fondo dentro del hueco.
 
+  /**
+   * Mascara de caja completa, para elementos OPACOS (recuadros de comentario,
+   * stickers, etiquetas, marcas de agua).
+   *
+   * Con estos no sirve buscar glifos: el fondo del recuadro tapa la imagen igual que
+   * el texto, y ademas suele ser claro con letras oscuras — justo al reves que un
+   * subtitulo. No hay nada que "detectar" dentro: lo que hay que quitar es el
+   * rectangulo entero.
+   */
+  SR.buildBoxMask = function (W, H, box) {
+    var b = clampBox(box, W, H);
+    var w = b.x1 - b.x0, h = b.y1 - b.y0, n = w * h;
+    var mask = new Uint8Array(n);
+    mask.fill(1);
+    return { mask: mask, box: b, w: w, h: h, count: n };
+  };
+
   /** Construye la mascara y rellena, en un paso. */
   SR.cleanRegion = function (rgba, W, H, box, opts) {
     var o = opts || {};
