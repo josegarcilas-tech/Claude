@@ -316,11 +316,58 @@
     v.setAttribute('playsinline', '');
     v.setAttribute('webkit-playsinline', '');
     v.preload = 'auto';
-    v.crossOrigin = 'anonymous';
+
+    // iOS no pinta fotogramas de un <video> que no esta en el documento, y con
+    // display:none o width:0 tampoco. Tiene que estar puesto y "renderizado",
+    // aunque sea de 2px y practicamente invisible.
+    v.style.cssText = 'position:fixed;left:0;top:0;width:2px;height:2px;' +
+                      'opacity:0.01;pointer-events:none;z-index:-1;';
+    document.body.appendChild(v);
 
     function cleanup() {
+      try { v.pause(); } catch (_) {}
+      try { if (v.parentNode) v.parentNode.removeChild(v); } catch (_) {}
       try { v.removeAttribute('src'); v.load(); } catch (_) {}
       try { root.URL.revokeObjectURL(url); } catch (_) {}
+    }
+
+    /**
+     * iOS solo empieza a decodificar de verdad despues de una reproduccion. Un
+     * play() seguido de pause() deja el elemento listo sin que se oiga ni se vea.
+     */
+    function prime() {
+      try {
+        var p = v.play();
+        if (p && typeof p.then === 'function') {
+          return p.then(function () { try { v.pause(); } catch (_) {} },
+                        function () { /* sin gesto de usuario: seguimos igual */ });
+        }
+        try { v.pause(); } catch (_) {}
+      } catch (_) { /* da igual, seguimos */ }
+      return Promise.resolve();
+    }
+
+    /**
+     * `seeked` dice que la busqueda termino, NO que el fotograma nuevo ya se pinto.
+     * En iOS dibujar en ese momento devuelve el fotograma anterior, asi que la
+     * mascara se calcula sobre una imagen que no corresponde y no se borra nada
+     * (el video sale entero, como si la app no hubiera hecho su trabajo).
+     * requestVideoFrameCallback avisa cuando el fotograma esta realmente presentado.
+     */
+    function framePresented() {
+      if (typeof v.requestVideoFrameCallback !== 'function') {
+        return delay(0);
+      }
+      return new Promise(function (res) {
+        var done = false;
+        var finish = function () { if (!done) { done = true; res(); } };
+        var id = v.requestVideoFrameCallback(finish);
+        setTimeout(function () {
+          if (done) return;
+          try { v.cancelVideoFrameCallback(id); } catch (_) {}
+          finish();
+        }, 300);
+      });
     }
 
     function ready() {
@@ -371,7 +418,7 @@
       // al centro del frame: el seek redondea al frame que contiene ese instante
       var t = (s.timestamp + (s.duration || 0) / 2) / 1e6;
       var idx = i++;
-      return seekTo(t).then(function () {
+      return seekTo(t).then(framePresented).then(function () {
         var info = { timestamp: s.timestamp, duration: s.duration, close: function () {} };
         var res = onFrame(v, idx, info);
         if (res && typeof res.then === 'function') {
@@ -383,6 +430,7 @@
     }
 
     return ready()
+      .then(prime)
       .then(step)
       .then(function (n) { cleanup(); return n; })
       .catch(function (e) { cleanup(); throw e; });

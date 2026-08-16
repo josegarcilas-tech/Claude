@@ -160,6 +160,11 @@
     var fps = opts.fps || 30;
     var inpaintOpts = opts.inpaintOptions || {};
     var style = opts.style || {};
+    // Cuantos frames se limpiaron de verdad. Si sale 0 habiendo segmentos activos,
+    // algo fallo silenciosamente (el caso clasico: se leyeron fotogramas que no
+    // correspondian) y hay que decirlo en vez de entregar el video intacto.
+    var cleanedFrames = 0;
+    var framesWithSegments = 0;
 
     return SR.Video.createEncoder({
       width: W, height: H,
@@ -183,6 +188,7 @@
         var seg = segments[s];
         if (idx >= seg.firstFrame && idx <= seg.lastFrame) active.push(seg);
       }
+      if (active.length) framesWithSegments++;
 
       if (active.length && !opts.skipRemoval) {
         var img = ctx.getImageData(0, 0, W, H);
@@ -196,7 +202,7 @@
           var built = SR.buildMask(img.data, W, H, box, inpaintOpts);
           if (SR.inpaintTelea(img.data, W, H, built, inpaintOpts.radius)) touched = true;
         }
-        if (touched) ctx.putImageData(img, 0, 0);
+        if (touched) { ctx.putImageData(img, 0, 0); cleanedFrames++; }
       }
 
       for (var d = 0; d < active.length; d++) {
@@ -217,7 +223,17 @@
       if (opts.onFrame) opts.onFrame(idx, samples.length, canvas);
       return encoder.addFrame(canvas, ts, dur);
       }, opts.onProgress).then(function () {
-        return encoder.finalize();
+        if (!opts.skipRemoval && framesWithSegments > 0 && cleanedFrames === 0) {
+          throw new Error(
+            'No se encontró texto que borrar en ninguno de los ' + framesWithSegments +
+            ' fotogramas marcados, así que el video habría salido igual que el original. ' +
+            'Suele pasar cuando la caja del segmento no cae sobre el subtítulo: revisa la ' +
+            'zona en el paso 3, o vuelve a analizar con más fotogramas.'
+          );
+        }
+        return encoder.finalize().then(function (blob) {
+          return { blob: blob, cleanedFrames: cleanedFrames, framesWithSegments: framesWithSegments };
+        });
       });
     });
   };

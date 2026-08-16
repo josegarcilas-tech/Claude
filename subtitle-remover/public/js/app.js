@@ -571,10 +571,15 @@
 
     yieldToUi().then(function () {
       return SR.Pipeline.process(opts);
-    }).then(function (blob) {
+    }).then(function (result) {
+      var blob = result.blob;
       var secs = ((performance.now() - t0) / 1000).toFixed(1);
       bar.style.width = '100%';
-      setStatus(status, 'Video procesado en ' + secs + ' s · ' + fmtBytes(blob.size), 'ok');
+      setStatus(status,
+        'Video procesado en ' + secs + ' s · ' + fmtBytes(blob.size),
+        'ok',
+        'Se limpiaron ' + result.cleanedFrames + ' de ' + result.framesWithSegments +
+        ' fotogramas con subtítulo.');
 
       if (state.blobUrl) URL.revokeObjectURL(state.blobUrl);
       state.blobUrl = URL.createObjectURL(blob);
