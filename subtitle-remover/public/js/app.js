@@ -11,6 +11,7 @@
     file: null,
     track: null,
     samples: [],
+    src: null,
     audio: null,
     audioSamples: [],
     shots: [],
@@ -68,27 +69,25 @@
   if (!SR.Video.isSupported()) {
     var warn = $('unsupported');
     warn.innerHTML =
-      '<h3>Tu navegador no puede procesar video aquí</h3>' +
-      '<p>Esta herramienta usa <strong>WebCodecs</strong> para decodificar y volver a codificar el video ' +
-      'sin subirlo a ningún servidor. Ábrela en <strong>Chrome, Edge u Opera</strong> (versión de escritorio, ' +
-      '2023 en adelante). Firefox todavía no lo soporta completo.</p>';
+      '<h3>Tu navegador no puede generar el video</h3>' +
+      '<p>Hace falta el codificador de <strong>WebCodecs</strong> para armar el MP4 de salida. ' +
+      'Ábrela en <strong>Chrome o Edge</strong> (2023 en adelante). Firefox todavía no lo ' +
+      'soporta completo.</p>';
     show(warn);
     $('drop').style.pointerEvents = 'none';
     $('drop').style.opacity = '.5';
   } else if (isIOS) {
-    // En iOS TODOS los navegadores usan WebKit por obligacion de Apple, asi que
-    // "abrelo en Chrome" no cambia nada: Chrome en iPhone es Safari por dentro.
-    // Su decodificador aborta con "Decoder failure" en videos de pocos segundos.
+    // En iOS el decodificador de WebCodecs aborta con "Decoder failure", pero
+    // reproducir video es justo lo que estos equipos hacen bien: si falla, se
+    // reintenta leyendo los fotogramas de un <video> normal.
     var note = $('unsupported');
-    note.className = 'warning';
+    note.className = 'warning soft';
     note.innerHTML =
-      '<h3>Esto no va a funcionar en iPhone ni en iPad</h3>' +
-      '<p>El decodificador de video de iOS aborta con <em>«Decoder failure»</em> en cuanto ' +
-      'el clip dura unos segundos.</p>' +
-      '<p><strong>Cambiar de navegador en el iPhone no sirve:</strong> Apple obliga a que ' +
-      'Chrome, Edge y Firefox en iOS usen el motor de Safari, así que los tres se comportan ' +
-      'igual.</p>' +
-      '<p>Ábrelo en una <strong>computadora</strong>, con Chrome o Edge. Ahí sí funciona.</p>';
+      '<h3>En iPhone y iPad va por el camino lento</h3>' +
+      '<p>El decodificador rápido de iOS falla con <em>«Decoder failure»</em>, así que la app ' +
+      'lo detecta y extrae los fotogramas reproduciendo el video, que sí funciona aquí. ' +
+      'Tarda bastante más y con clips largos el navegador puede quedarse sin memoria.</p>' +
+      '<p>Si tienes una computadora a mano, ahí va mucho más rápido.</p>';
     show(note);
   }
 
@@ -126,6 +125,8 @@
       state.samples = res.videoSamples;
       state.audio = res.audio;
       state.audioSamples = res.audioSamples;
+      // el camino de respaldo reproduce el archivo original en un <video>
+      state.src = { file: file, track: res.video, samples: res.videoSamples };
 
       var durationSec = state.samples.length
         ? (state.samples[state.samples.length - 1].timestamp + state.samples[state.samples.length - 1].duration) / 1e6
@@ -206,7 +207,7 @@
     if (state.shotsFailed) return Promise.resolve([]);
     var status = $('analyze-status');
     setStatus(status, 'Extrayendo fotogramas para las miniaturas…', 'work');
-    return SR.Pipeline.sampleFrames(state.track, state.samples, 8, null)
+    return SR.Pipeline.sampleFrames(state.src, 8, null)
       .then(function (shots) {
         state.shots = shots;
         hide(status);
@@ -231,7 +232,7 @@
     var count = parseInt($('frame-count').value, 10) || 8;
     state.mode = currentMode();
 
-    SR.Pipeline.sampleFrames(state.track, state.samples, count, null).then(function (shots) {
+    SR.Pipeline.sampleFrames(state.src, count, null).then(function (shots) {
       state.shots = shots;
       setStatus(status, 'Claude está analizando ' + shots.length + ' fotogramas…', 'work');
       return fetch('/api/analyze', {
@@ -267,7 +268,7 @@
       setStatus(status, 'Ajustando los cortes fotograma a fotograma…', 'work');
 
       return yieldToUi()
-        .then(function () { return SR.Pipeline.refine(state.track, state.samples, state.segments, null); })
+        .then(function () { return SR.Pipeline.refine(state.src, state.segments, null); })
         .then(function () {
           setStatus(status, 'Listo: ' + state.segments.length + ' subtítulo(s) detectado(s).', 'ok');
           show($('step-segments'));
@@ -537,8 +538,7 @@
     var marginV = parseInt($('opt-margin').value, 10);
 
     var opts = {
-      track: state.track,
-      samples: state.samples,
+      src: state.src,
       segments: state.segments,
       fps: state.fps,
       audio: (state.audio && state.audio.description) ? state.audio : null,

@@ -223,3 +223,6 @@ button:disabled, .primary[aria-disabled=true] { opacity: .5; cursor: not-allowed
   .top { padding-top: 30px; }
   .top h1 { font-size: 25px; }
 }
+
+/* aviso informativo, no bloqueante */
+.warning.soft { background: rgba(217, 164, 65, .1); border-color: var(--warn); }

@@ -23,7 +23,8 @@
   }
 
   /** Pasada 1: N fotogramas repartidos, escalados y en JPEG, para el analisis. */
-  Pipeline.sampleFrames = function (track, samples, count, onProgress) {
+  Pipeline.sampleFrames = function (src, count, onProgress) {
+    var track = src.track, samples = src.samples;
     var total = samples.length;
     var wanted = [];
     for (var i = 0; i < count; i++) {
@@ -38,17 +39,16 @@
     var ctx = canvas.getContext('2d');
     var shots = [];
 
-    return SR.Video.decodeAll(track, samples, function (frame, idx) {
+    return SR.Video.decodeAll(src, function (source, idx, info) {
       if (wantedSet[idx]) {
-        ctx.drawImage(frame, 0, 0, cw, ch);
-        var timeSec = frame.timestamp / 1e6;
-        shots.push({ index: idx, time: timeSec, dataUrl: null, canvasRef: null });
-        var shot = shots[shots.length - 1];
+        ctx.drawImage(source, 0, 0, cw, ch);
+        var shot = { index: idx, time: info.timestamp / 1e6, dataUrl: null };
+        shots.push(shot);
         var p = canvasToJpeg(canvas).then(function (url) { shot.dataUrl = url; });
-        frame.close();
+        info.close();
         return p;
       }
-      frame.close();
+      info.close();
       return null;
     }, onProgress).then(function () {
       return shots.filter(function (s) { return s.dataUrl; });
@@ -75,7 +75,8 @@
    * Pasada 2: puntaje de texto por frame dentro de la caja de cada segmento.
    * Devuelve los segmentos con firstFrame/lastFrame exactos.
    */
-  Pipeline.refine = function (track, samples, segments, onProgress) {
+  Pipeline.refine = function (src, segments, onProgress) {
+    var track = src.track;
     var W = track.width, H = track.height;
     var canvas = makeCanvas(W, H);
     var ctx = canvas.getContext('2d', { willReadFrequently: true });
@@ -83,15 +84,15 @@
     var scores = segments.map(function () { return []; });
     var times = [];
 
-    return SR.Video.decodeAll(track, samples, function (frame, idx) {
-      var t = frame.timestamp / 1e6;
+    return SR.Video.decodeAll(src, function (source, idx, info) {
+      var t = info.timestamp / 1e6;
       times[idx] = t;
       // solo leemos pixeles si algun segmento puede estar activo cerca de aqui
       var need = segments.some(function (seg) {
         return t >= seg.start - 1.0 && t <= seg.end + 1.0;
       });
       if (need) {
-        ctx.drawImage(frame, 0, 0);
+        ctx.drawImage(source, 0, 0);
         var img = ctx.getImageData(0, 0, W, H);
         for (var s = 0; s < segments.length; s++) {
           var seg = segments[s];
@@ -101,7 +102,7 @@
       } else {
         for (var s2 = 0; s2 < segments.length; s2++) scores[s2][idx] = 0;
       }
-      frame.close();
+      info.close();
       return null;
     }, onProgress).then(function (frameCount) {
       segments.forEach(function (seg, si) {
@@ -149,7 +150,8 @@
    * @returns {Promise<Blob>}
    */
   Pipeline.process = function (opts) {
-    var track = opts.track, samples = opts.samples, segments = opts.segments;
+    var src = opts.src;
+    var track = src.track, samples = src.samples, segments = opts.segments;
     var W = track.width, H = track.height;
 
     var canvas = makeCanvas(W, H);
@@ -170,11 +172,11 @@
       }
       if (opts.onCodec) opts.onCodec(encoder.codec);
 
-      return SR.Video.decodeAll(track, samples, function (frame, idx) {
-      ctx.drawImage(frame, 0, 0);
-      var ts = frame.timestamp;
-      var dur = frame.duration || (1e6 / fps);
-      frame.close();
+      return SR.Video.decodeAll(src, function (source, idx, info) {
+      ctx.drawImage(source, 0, 0);
+      var ts = info.timestamp;
+      var dur = info.duration || (1e6 / fps);
+      info.close();
 
       var active = [];
       for (var s = 0; s < segments.length; s++) {

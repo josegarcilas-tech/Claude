@@ -14,11 +14,22 @@
   var SR = (root.SR = root.SR || {});
   var Video = (SR.Video = {});
 
+  /**
+   * Para decodificar hay respaldo con un <video> normal, asi que lo unico
+   * imprescindible es poder CODIFICAR el resultado.
+   */
   Video.isSupported = function () {
-    return typeof root.VideoDecoder === 'function' &&
-           typeof root.VideoEncoder === 'function' &&
+    return typeof root.VideoEncoder === 'function' &&
            typeof root.EncodedVideoChunk === 'function';
   };
+
+  Video.hasDecoder = function () {
+    return typeof root.VideoDecoder === 'function' &&
+           typeof root.EncodedVideoChunk === 'function';
+  };
+
+  /** Camino de decodificacion que acabo usandose ('webcodecs' | 'element' | null). */
+  Video.decodeMode = function () { return preferredMode; };
 
   /** Extrae el `description` (avcC/hvcC/...) que necesita VideoDecoder. */
   function codecDescription(file, trackId) {
@@ -153,16 +164,41 @@
   }
 
   /**
-   * Decodifica todos los frames y llama a onFrame(VideoFrame, index).
-   * El callback DEBE cerrar el frame antes de devolver; si devuelve una promesa,
-   * se espera antes de seguir alimentando el decodificador.
+   * Decodificacion. Hay dos caminos:
    *
-   * El decodificador se alimenta poco a poco y el frame se procesa dentro del propio
-   * callback de salida. Encolar las muestras de golpe y diferir el procesado hacia una
-   * cadena de promesas deja cientos de VideoFrame vivos a la vez: Chrome lo aguanta,
-   * pero Safari en iPhone se queda sin recursos y aborta con "Decoder failure".
+   *   webcodecs — VideoDecoder. Rapido y con acceso exacto a cada frame.
+   *   element   — un <video> normal al que se le va moviendo currentTime.
+   *               Mas lento, pero solo usa APIs que existen en todas partes.
+   *
+   * En iOS (iPhone y iPad, y por tanto Chrome, Edge y Firefox en iOS, que estan
+   * obligados a usar WebKit) VideoDecoder aborta con "Decoder failure" en videos de
+   * unos pocos segundos. Reproducir video, en cambio, es justo lo que esos equipos
+   * hacen bien. Por eso se intenta WebCodecs y, si falla, se repite con el <video>.
+   *
+   * El callback recibe (source, index, info):
+   *   source — algo que ctx.drawImage() acepte (VideoFrame o HTMLVideoElement)
+   *   info   — { timestamp, duration, close() }; hay que llamar a close() al terminar
+   *            con el source, y si el callback devuelve una promesa se espera.
    */
-  Video.decodeAll = function (track, samples, onFrame, onProgress) {
+  var preferredMode = null;   // se recuerda el que funciono, para las pasadas siguientes
+
+  Video.decodeAll = function (src, onFrame, onProgress) {
+    if (preferredMode === 'element' || !Video.hasDecoder()) {
+      return decodeWithElement(src, onFrame, onProgress);
+    }
+    return decodeWithCodecs(src, onFrame, onProgress).then(function (n) {
+      preferredMode = 'webcodecs';
+      return n;
+    }, function (err) {
+      if (preferredMode === 'webcodecs') throw err;  // ya funcionaba: el fallo es otro
+      preferredMode = 'element';
+      return decodeWithElement(src, onFrame, onProgress);
+    });
+  };
+
+  /** Camino rapido: VideoDecoder de WebCodecs. */
+  function decodeWithCodecs(src, onFrame, onProgress) {
+    var track = src.track, samples = src.samples;
     var index = 0;
     var pending = Promise.resolve();
     var failure = null;
@@ -173,12 +209,17 @@
         if (failure) { try { frame.close(); } catch (_) {} return; }
         var i = index++;
         var res;
+        var info = {
+          timestamp: frame.timestamp,
+          duration: frame.duration,
+          close: function () { try { frame.close(); } catch (_) {} }
+        };
         try {
           // sincrono: el callback dibuja y cierra el frame antes de devolver
-          res = onFrame(frame, i);
+          res = onFrame(frame, i, info);
         } catch (e) {
           failure = e;
-          try { frame.close(); } catch (_) {}
+          info.close();
           return;
         }
         if (res && typeof res.then === 'function') {
@@ -209,21 +250,7 @@
 
     function decoderError() {
       var msg = String(failure && failure.message || failure || 'Decoder failure');
-      var ua = (root.navigator && root.navigator.userAgent) || '';
-      var onIOS = /iPad|iPhone|iPod/.test(ua) ||
-                  (/Macintosh/.test(ua) && root.navigator && root.navigator.maxTouchPoints > 1);
-      if (onIOS) {
-        return new Error(
-          'El decodificador de video de iOS abortó (' + msg + '). En iPhone y iPad esto no ' +
-          'tiene arreglo desde la página, y cambiar de navegador tampoco ayuda: Apple obliga ' +
-          'a que Chrome, Edge y Firefox usen el motor de Safari. Ábrelo en una computadora, ' +
-          'con Chrome o Edge.'
-        );
-      }
-      return new Error(
-        'El navegador no pudo decodificar el video (' + msg + '). ' +
-        'Prueba con Chrome o Edge actualizados, o con un video más corto o de menor resolución.'
-      );
+      return new Error('WebCodecs no pudo decodificar el video (' + msg + ').');
     }
 
     function pump() {
@@ -267,7 +294,100 @@
       try { decoder.close(); } catch (_) {}
       throw e;
     });
-  };
+  }
+
+  /**
+   * Camino compatible: un <video> al que se le mueve currentTime frame a frame.
+   * Se usan las marcas de tiempo exactas que dio el demuxer y se apunta al centro
+   * de cada frame, para caer siempre en el correcto pese al redondeo del seek.
+   */
+  function decodeWithElement(src, onFrame, onProgress) {
+    if (!src.file) {
+      return Promise.reject(new Error('No se puede decodificar: falta el archivo original.'));
+    }
+    var samples = src.samples;
+    var total = samples.length;
+    var url = root.URL.createObjectURL(src.file);
+    var v = document.createElement('video');
+    v.src = url;
+    v.muted = true;
+    v.defaultMuted = true;
+    v.playsInline = true;
+    v.setAttribute('playsinline', '');
+    v.setAttribute('webkit-playsinline', '');
+    v.preload = 'auto';
+    v.crossOrigin = 'anonymous';
+
+    function cleanup() {
+      try { v.removeAttribute('src'); v.load(); } catch (_) {}
+      try { root.URL.revokeObjectURL(url); } catch (_) {}
+    }
+
+    function ready() {
+      return new Promise(function (res, rej) {
+        var done = false;
+        var ok = function () { if (!done) { done = true; res(); } };
+        var bad = function () {
+          if (done) return;
+          done = true;
+          rej(new Error('El navegador no pudo abrir el video para reproducirlo.'));
+        };
+        if (v.readyState >= 2) return ok();
+        v.addEventListener('loadeddata', ok, { once: true });
+        v.addEventListener('canplay', ok, { once: true });
+        v.addEventListener('error', bad, { once: true });
+        setTimeout(bad, 30000);
+      });
+    }
+
+    function seekTo(t) {
+      return new Promise(function (res, rej) {
+        var done = false;
+        var ok = function () { if (!done) { done = true; res(); } };
+        var bad = function () {
+          if (done) return;
+          done = true;
+          rej(new Error('El navegador se quedó bloqueado al buscar dentro del video.'));
+        };
+        v.addEventListener('seeked', ok, { once: true });
+        v.addEventListener('error', bad, { once: true });
+        var guard = setTimeout(bad, 15000);
+        var clear = function () { clearTimeout(guard); };
+        v.addEventListener('seeked', clear, { once: true });
+        try {
+          v.currentTime = t;
+        } catch (e) {
+          done = true; clear(); rej(e);
+        }
+      });
+    }
+
+    var i = 0;
+    var pending = Promise.resolve();
+
+    function step() {
+      if (i >= total) return pending.then(function () { return total; });
+      var s = samples[i];
+      // al centro del frame: el seek redondea al frame que contiene ese instante
+      var t = (s.timestamp + (s.duration || 0) / 2) / 1e6;
+      var idx = i++;
+      return seekTo(t).then(function () {
+        var info = { timestamp: s.timestamp, duration: s.duration, close: function () {} };
+        var res = onFrame(v, idx, info);
+        if (res && typeof res.then === 'function') {
+          pending = pending.then(function () { return res; });
+        }
+        if (onProgress && (idx % 5 === 0)) onProgress(idx, total);
+        return pending;
+      }).then(step);
+    }
+
+    return ready()
+      .then(step)
+      .then(function (n) { cleanup(); return n; })
+      .catch(function (e) { cleanup(); throw e; });
+  }
+
 
   // Preferimos H.264: es lo que reproduce cualquier reproductor, telefono y red
   // social. Los demas son respaldo por si el navegador no trae el codec.

@@ -55,13 +55,12 @@ Usa **WebCodecs** para decodificar y recodificar sin subir nada. Funciona en
 **Chrome, Edge y Opera de escritorio** (2023 en adelante). Firefox todavía no lo
 soporta del todo y la app avisa si es el caso.
 
-**En iPhone y iPad no funciona.** El decodificador de video de iOS aborta con
-*«Decoder failure»* en cuanto el clip dura unos segundos. Y **cambiar de navegador en
-el iPhone no cambia nada**: Apple obliga a que Chrome, Edge y Firefox en iOS usen el
-motor de Safari, así que los tres se comportan igual. La app detecta iOS y lo avisa
-arriba del todo, antes de que elijas archivo.
+**En iPhone y iPad funciona, pero lento.** El decodificador de WebCodecs de iOS aborta
+con *«Decoder failure»*, así que la app lo detecta y reintenta por un camino de
+respaldo: extrae los fotogramas moviendo el `currentTime` de un `<video>` normal, que
+es justo lo que esos equipos hacen bien. Mismo resultado, unas tres veces más lento.
 
-Hace falta una **computadora**, con Chrome o Edge.
+El cambio de camino es automático; no hay nada que configurar.
 
 Prefiere H.264 para la salida y cae a VP9 o AV1 si el navegador no trae H.264.
 El audio **no se recodifica**: las muestras AAC originales se copian tal cual.
@@ -71,6 +70,20 @@ El audio **no se recodifica**: las muestras AAC originales se copian tal cual.
 ## Cómo funciona
 
 Tres pasadas sobre el video:
+
+### Decodificación: dos caminos
+
+| Camino | Cuándo | Velocidad |
+|---|---|---|
+| `webcodecs` | `VideoDecoder`, si el navegador lo soporta de verdad | rápido |
+| `element` | respaldo: se mueve el `currentTime` de un `<video>` y se dibuja al canvas | ~3× más lento |
+
+Se intenta WebCodecs y, si falla, se repite la pasada con el `<video>`; el camino que
+funcionó se recuerda para las siguientes. El respaldo apunta al **centro** de cada
+fotograma usando las marcas de tiempo exactas del demuxer, así que los cortes salen
+en el mismo fotograma que por el camino rápido.
+
+### Las tres pasadas
 
 | Pasada | Qué hace |
 |---|---|
