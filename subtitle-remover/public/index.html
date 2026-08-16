@@ -39,8 +39,26 @@
   <section class="step hidden" id="step-analyze">
     <div class="step-head"><span class="num">2</span><h2>Detecta y traduce</h2></div>
 
+    <fieldset class="modes">
+      <legend>¿Qué quieres hacer?</legend>
+      <label class="mode">
+        <input type="radio" name="mode" value="translate" checked>
+        <span class="mode-body">
+          <b>Quitar los subtítulos y traducirlos</b>
+          <small>Borra el texto original y escribe la traducción en su lugar.</small>
+        </span>
+      </label>
+      <label class="mode">
+        <input type="radio" name="mode" value="remove">
+        <span class="mode-body">
+          <b>Solo quitar los subtítulos</b>
+          <small>Deja el video limpio, sin ningún texto encima.</small>
+        </span>
+      </label>
+    </fieldset>
+
     <div class="controls">
-      <label class="field">
+      <label class="field" id="lang-field">
         <span>Idioma de destino</span>
         <input type="text" id="lang" value="español" autocomplete="off">
       </label>
@@ -56,7 +74,7 @@
       <button id="btn-manual" class="ghost">Añadir segmento a mano</button>
     </div>
 
-    <p class="hint">
+    <p class="hint" id="analyze-hint">
       Claude mira los fotogramas, ubica los subtítulos incrustados, los transcribe y los traduce.
       Después puedes corregir cualquier cosa antes de procesar.
     </p>
@@ -95,20 +113,16 @@
           </select>
         </label>
         <label class="field narrow">
-          <span>Calidad de relleno</span>
-          <select id="opt-iter">
-            <option value="30">Rápida</option>
-            <option value="60" selected>Normal</option>
-            <option value="150">Máxima</option>
+          <span>Radio de reconstrucción</span>
+          <select id="opt-radius">
+            <option value="3">3 — detalle fino</option>
+            <option value="4" selected>4 — recomendado</option>
+            <option value="7">7 — más suave</option>
           </select>
         </label>
         <label class="check">
           <input type="checkbox" id="opt-emoji" checked>
           <span>Borrar también los emojis del subtítulo</span>
-        </label>
-        <label class="check">
-          <input type="checkbox" id="opt-onlyremove">
-          <span>Solo borrar, sin escribir subtítulos nuevos</span>
         </label>
       </div>
     </details>
@@ -139,6 +153,7 @@
 
 <script src="/vendor/mp4box.all.min.js"></script>
 <script src="/vendor/mp4-muxer.js"></script>
+<script src="/js/telea.js"></script>
 <script src="/js/inpaint.js"></script>
 <script src="/js/overlay.js"></script>
 <script src="/js/video.js"></script>

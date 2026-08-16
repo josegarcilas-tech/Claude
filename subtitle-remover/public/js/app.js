@@ -16,8 +16,14 @@
     shots: [],
     segments: [],
     fps: 30,
+    mode: 'translate',   // 'translate' = quitar y traducir | 'remove' = solo quitar
     blobUrl: null
   };
+
+  function currentMode() {
+    var checked = document.querySelector('input[name="mode"]:checked');
+    return checked ? checked.value : 'translate';
+  }
 
   // --------------------------------------------------------------- utilidades
 
@@ -136,6 +142,24 @@
 
   // -------------------------------------------------------------- paso 2
 
+  // El modo cambia lo que se le pide a Claude y lo que se dibuja al final.
+  Array.prototype.forEach.call(document.querySelectorAll('input[name="mode"]'), function (radio) {
+    radio.addEventListener('change', function () {
+      state.mode = currentMode();
+      var translating = state.mode === 'translate';
+      $('lang-field').classList.toggle('hidden', !translating);
+      $('btn-analyze').textContent = translating
+        ? 'Analizar con Claude'
+        : 'Detectar subtítulos con Claude';
+      $('analyze-hint').textContent = translating
+        ? 'Claude mira los fotogramas, ubica los subtítulos incrustados, los transcribe y los traduce. ' +
+          'Después puedes corregir cualquier cosa antes de procesar.'
+        : 'Claude solo ubica los subtítulos incrustados; no se escribirá texto nuevo. ' +
+          'Después puedes ajustar las zonas antes de procesar.';
+      if (state.segments.length) renderSegments();
+    });
+  });
+
   $('btn-analyze').addEventListener('click', analyze);
   $('btn-manual').addEventListener('click', function () {
     ensureShots().then(function () {
@@ -161,6 +185,7 @@
     setStatus(status, 'Extrayendo fotogramas del video…', 'work');
 
     var count = parseInt($('frame-count').value, 10) || 8;
+    state.mode = currentMode();
 
     SR.Pipeline.sampleFrames(state.track, state.samples, count, null).then(function (shots) {
       state.shots = shots;
@@ -169,6 +194,7 @@
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          mode: state.mode,
           targetLanguage: $('lang').value || 'español',
           frames: shots.map(function (s) { return { time: s.time, dataUrl: s.dataUrl }; })
         })
@@ -373,18 +399,20 @@
         body.appendChild(orig);
       }
 
-      // traduccion editable
-      var lab = document.createElement('label');
-      lab.className = 'field';
-      var span = document.createElement('span');
-      span.textContent = 'Subtítulo nuevo (déjalo vacío para solo borrar)';
-      var ta = document.createElement('textarea');
-      ta.value = seg.translated;
-      ta.rows = 2;
-      ta.addEventListener('input', function () { seg.translated = ta.value; });
-      lab.appendChild(span);
-      lab.appendChild(ta);
-      body.appendChild(lab);
+      // traduccion editable (solo tiene sentido si vamos a escribir texto nuevo)
+      if (state.mode === 'translate') {
+        var lab = document.createElement('label');
+        lab.className = 'field';
+        var span = document.createElement('span');
+        span.textContent = 'Subtítulo nuevo (déjalo vacío para solo borrar este)';
+        var ta = document.createElement('textarea');
+        ta.value = seg.translated;
+        ta.rows = 2;
+        ta.addEventListener('input', function () { seg.translated = ta.value; });
+        lab.appendChild(span);
+        lab.appendChild(ta);
+        body.appendChild(lab);
+      }
 
       // posicion + caja
       var row2 = document.createElement('div');
@@ -475,7 +503,7 @@
       skipRemoval: false,
       inpaintOptions: {
         grow: parseInt($('opt-grow').value, 10),
-        iterations: parseInt($('opt-iter').value, 10),
+        radius: parseInt($('opt-radius').value, 10),
         removeEmoji: $('opt-emoji').checked
       },
       style: {
@@ -489,7 +517,8 @@
       }
     };
 
-    if ($('opt-onlyremove').checked) {
+    // en modo "solo quitar" no se dibuja nada encima
+    if (state.mode === 'remove') {
       opts.segments = state.segments.map(function (s) {
         return Object.assign({}, s, { translated: '' });
       });

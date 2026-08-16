@@ -9,8 +9,7 @@
  *      (+ emojis: manchas saturadas, compactas y de tamano de glifo).
  *   2. dilatacion generosa: hay que cubrir todo el antialiasing, si no queda un
  *      "fantasma" con la forma de las letras.
- *   3. relleno: piramide push-pull (color base) + relajacion de Laplace restringida
- *      a la mascara (difusion suave desde el borde conocido).
+ *   3. relleno: Telea / Fast Marching Method, en telea.js.
  *
  * Todo son funciones puras sobre buffers RGBA => testeables fuera del navegador.
  * Las mascaras se manejan en coordenadas locales a la caja para no recorrer el
@@ -26,8 +25,7 @@
     darkThreshold: 105,   // contorno del glifo
     outlineReach: 6,      // hasta donde se considera "contorno pegado al relleno"
     grow: 4,              // dilatacion final; <4 deja fantasma del texto
-    iterations: 60,       // pasadas de difusion (mas alla de ~60 ya no se nota)
-    margin: 24,           // borde conocido alrededor del hueco
+    radius: 4,            // vecindad de Telea (inpaintRadius de OpenCV)
     removeEmoji: true
   };
 
@@ -324,176 +322,17 @@
   }
 
   // ---------------------------------------------------------------- inpainting
+  //
+  // El relleno lo hace telea.js (Fast Marching Method). Se probo tambien una
+  // difusion armonica con multigrid: es mas rapida, pero solo promedia, y el parche
+  // se nota como una mancha borrosa. Telea extrapola siguiendo el frente, asi que
+  // prolonga las lineas y la textura del fondo dentro del hueco.
 
-  /**
-   * Rellena los pixeles marcados difundiendo el color del entorno. Modifica rgba in place.
-   * @param built resultado de SR.buildMask
-   */
-  SR.inpaint = function (rgba, W, H, built, opts) {
-    var o = opts || {};
-    var iterations = o.iterations == null ? DEFAULTS.iterations : o.iterations;
-    var margin = o.margin == null ? DEFAULTS.margin : o.margin;
-    if (!built || !built.count) return false;
-
-    var b = built.box, mw = built.w, mask = built.mask;
-
-    // rect de trabajo = caja de la mascara + margen conocido (condicion de contorno)
-    var x0 = Math.max(0, b.x0 - margin), x1 = Math.min(W, b.x1 + margin);
-    var y0 = Math.max(0, b.y0 - margin), y1 = Math.min(H, b.y1 + margin);
-    var w = x1 - x0, h = y1 - y0, n = w * h;
-
-    var col = scratch('col', n * 3, Float32Array);
-    var known = scratch('known', n, Uint8Array);
-
-    for (var ly = 0; ly < h; ly++) {
-      var gy = y0 + ly;
-      var lrow = ly * w;
-      var grow_ = gy * W;
-      var inMaskRow = (gy >= b.y0 && gy < b.y1);
-      var mrow = inMaskRow ? (gy - b.y0) * mw - b.x0 : 0;
-      for (var lx = 0; lx < w; lx++) {
-        var gx = x0 + lx;
-        var lp = lrow + lx;
-        var gi = (grow_ + gx) * 4;
-        col[lp * 3] = rgba[gi];
-        col[lp * 3 + 1] = rgba[gi + 1];
-        col[lp * 3 + 2] = rgba[gi + 2];
-        var masked = (inMaskRow && gx >= b.x0 && gx < b.x1) ? mask[mrow + gx] : 0;
-        known[lp] = masked ? 0 : 1;
-      }
-    }
-
-    solveHarmonic(col, known, w, h, iterations);
-
-    for (var ry = 0; ry < h; ry++) {
-      var ry_g = y0 + ry;
-      if (ry_g < b.y0 || ry_g >= b.y1) continue; // fuera de la mascara: nada que escribir
-      var rrow = ry * w;
-      for (var rx = 0; rx < w; rx++) {
-        var rp = rrow + rx;
-        if (known[rp]) continue;
-        var gi2 = (ry_g * W + (x0 + rx)) * 4;
-        rgba[gi2] = col[rp * 3];
-        rgba[gi2 + 1] = col[rp * 3 + 1];
-        rgba[gi2 + 2] = col[rp * 3 + 2];
-      }
-    }
-    return true;
-  };
-
-  /**
-   * Resuelve el relleno como un problema de Laplace, con multigrid en cascada.
-   *
-   * Gauss-Seidel a secas necesita del orden de n^2 pasadas para atravesar un hueco
-   * de n pixeles de ancho. Una banda de subtitulo puede tener 400x100, asi que con
-   * unas decenas de pasadas el centro se queda con el color de la inicializacion
-   * (se notaba como un halo con la forma del texto o del emoji).
-   *
-   * Con multigrid se resuelve primero en los niveles chicos —donde el hueco mide
-   * pocos pixeles y converge enseguida— y se va bajando el resultado. Cada nivel
-   * arranca de una solucion ya casi correcta.
-   */
-  function solveHarmonic(col, known, w, h, iterations) {
-    var levels = [{ col: col, known: known, w: w, h: h }];
-    var cur = levels[0];
-    var cw = w, ch = h;
-
-    while (cw > 2 && ch > 2) {
-      var nw = Math.ceil(cw / 2), nh = Math.ceil(ch / 2);
-      var ncol = new Float32Array(nw * nh * 3);
-      var nknown = new Uint8Array(nw * nh);
-      for (var y = 0; y < nh; y++) {
-        for (var x = 0; x < nw; x++) {
-          var r = 0, g = 0, b = 0, cnt = 0;
-          for (var dy = 0; dy < 2; dy++) {
-            var sy = y * 2 + dy;
-            if (sy >= ch) continue;
-            for (var dx = 0; dx < 2; dx++) {
-              var sx = x * 2 + dx;
-              if (sx >= cw) continue;
-              var sp = sy * cw + sx;
-              if (!cur.known[sp]) continue;
-              r += cur.col[sp * 3]; g += cur.col[sp * 3 + 1]; b += cur.col[sp * 3 + 2];
-              cnt++;
-            }
-          }
-          var np = y * nw + x;
-          if (cnt) {
-            ncol[np * 3] = r / cnt; ncol[np * 3 + 1] = g / cnt; ncol[np * 3 + 2] = b / cnt;
-            nknown[np] = 1;
-          }
-        }
-      }
-      cur = { col: ncol, known: nknown, w: nw, h: nh };
-      levels.push(cur);
-      cw = nw; ch = nh;
-    }
-
-    // El nivel mas grueso se resuelve casi exacto: es diminuto, sale barato.
-    var top = levels[levels.length - 1];
-    relax(top.col, top.known, top.w, top.h, 40);
-
-    for (var l = levels.length - 2; l >= 0; l--) {
-      var fine = levels[l], coarse = levels[l + 1];
-      for (var fy = 0; fy < fine.h; fy++) {
-        for (var fx = 0; fx < fine.w; fx++) {
-          var fp = fy * fine.w + fx;
-          if (fine.known[fp]) continue;
-          var cp = (fy >> 1) * coarse.w + (fx >> 1);
-          fine.col[fp * 3] = coarse.col[cp * 3];
-          fine.col[fp * 3 + 1] = coarse.col[cp * 3 + 1];
-          fine.col[fp * 3 + 2] = coarse.col[cp * 3 + 2];
-        }
-      }
-      // suavizado en cada nivel; el mas fino se lleva el presupuesto del usuario
-      relax(fine.col, fine.known, fine.w, fine.h, l === 0 ? iterations : 24);
-    }
-  }
-
-  /**
-   * Relajacion de Laplace (Gauss-Seidel) sobre los huecos.
-   * Los vecinos se recortan al borde, asi que los huecos pegados al borde tambien
-   * se resuelven: en los niveles gruesos de la piramide el margen conocido casi
-   * desaparece y saltarselos dejaba pixeles en negro que luego bajaban al resultado.
-   */
-  function relax(col, known, w, h, iterations) {
-    var holes = [];
-    var neigh = [];
-    for (var y = 0; y < h; y++) {
-      var row = y * w;
-      for (var x = 0; x < w; x++) {
-        var p = row + x;
-        if (known[p]) continue;
-        holes.push(p);
-        neigh.push(
-          (y > 0 ? p - w : p + (h > 1 ? w : 0)),
-          (y < h - 1 ? p + w : p - (h > 1 ? w : 0)),
-          (x > 0 ? p - 1 : p + (w > 1 ? 1 : 0)),
-          (x < w - 1 ? p + 1 : p - (w > 1 ? 1 : 0))
-        );
-      }
-    }
-    if (!holes.length) return;
-    var idx = Int32Array.from(holes);
-    var nb = Int32Array.from(neigh);
-    var len = idx.length;
-
-    for (var it = 0; it < iterations; it++) {
-      for (var k = 0; k < len; k++) {
-        var o = idx[k] * 3;
-        var k4 = k * 4;
-        var a = nb[k4] * 3, b = nb[k4 + 1] * 3, c = nb[k4 + 2] * 3, d = nb[k4 + 3] * 3;
-        col[o] = (col[a] + col[b] + col[c] + col[d]) * 0.25;
-        col[o + 1] = (col[a + 1] + col[b + 1] + col[c + 1] + col[d + 1]) * 0.25;
-        col[o + 2] = (col[a + 2] + col[b + 2] + col[c + 2] + col[d + 2]) * 0.25;
-      }
-    }
-  }
-
-  /** Conveniencia: construye la mascara y rellena, en un paso. */
+  /** Construye la mascara y rellena, en un paso. */
   SR.cleanRegion = function (rgba, W, H, box, opts) {
-    var built = SR.buildMask(rgba, W, H, box, opts);
-    return SR.inpaint(rgba, W, H, built, opts);
+    var o = opts || {};
+    var built = SR.buildMask(rgba, W, H, box, o);
+    return SR.inpaintTelea(rgba, W, H, built, o.radius);
   };
 
   if (typeof module === 'object' && module.exports) module.exports = SR;

@@ -120,6 +120,31 @@ button:disabled, .primary[aria-disabled=true] { opacity: .5; cursor: not-allowed
 
 .hint { color: var(--muted); font-size: 13.5px; margin: 14px 0 0; }
 
+/* ------------------------------------------------------ selector de modo */
+.modes {
+  border: 0; padding: 0; margin: 0 0 18px;
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px;
+}
+.modes legend {
+  padding: 0; margin-bottom: 10px;
+  font-size: 13px; color: var(--muted);
+}
+.mode {
+  display: flex; align-items: flex-start; gap: 10px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 13px 14px;
+  cursor: pointer;
+  transition: border-color .15s, background .15s;
+}
+.mode:hover { border-color: var(--muted); }
+.mode input { accent-color: var(--accent); width: 17px; height: 17px; margin: 2px 0 0; flex: none; }
+.mode:has(input:checked) { border-color: var(--accent); background: rgba(217, 119, 87, .07); }
+.mode-body { display: flex; flex-direction: column; gap: 3px; }
+.mode-body b { font-weight: 600; font-size: 14.5px; }
+.mode-body small { color: var(--muted); font-size: 12.5px; line-height: 1.4; }
+
 /* ------------------------------------------------------------------ estado */
 .status {
   margin-top: 16px; padding: 12px 14px;

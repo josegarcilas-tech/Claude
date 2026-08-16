@@ -34,15 +34,18 @@ La clave queda solo en el servidor de Netlify. El navegador nunca la ve: llama a
 ## Cómo se usa
 
 1. **Elige el video** — MP4 (H.264/AAC, que es lo que sale de TikTok, Reels o Shorts).
-2. **Analizar con Claude** — mira unos fotogramas, ubica los subtítulos, los transcribe
-   y los traduce.
-3. **Revisa** — puedes corregir la traducción, los tiempos, la caja o la posición de
+2. **Elige qué hacer:**
+   - **Quitar los subtítulos y traducirlos** — borra el texto original y escribe la
+     traducción en su lugar (el idioma es configurable, no solo español).
+   - **Solo quitar los subtítulos** — deja el video limpio, sin nada encima. En este
+     modo a Claude solo se le pide localizar el texto, no traducirlo.
+3. **Analiza** — Claude mira unos fotogramas y ubica los subtítulos.
+4. **Revisa** — puedes corregir la traducción, los tiempos, la caja o la posición de
    cualquier segmento, desactivar los que no quieras, o añadir uno a mano.
-4. **Procesa** — borra el texto original, dibuja el nuevo y vuelve a codificar.
-5. **Descarga el MP4.**
+5. **Procesa** y **descarga el MP4.**
 
-Si dejas vacío el campo del subtítulo nuevo, ese tramo **solo se borra** (sin texto
-encima). También está la casilla *«Solo borrar»* para hacerlo con todos a la vez.
+En modo traducción, si dejas vacío el campo de un subtítulo, ese tramo concreto solo
+se borra.
 
 ---
 
@@ -78,10 +81,14 @@ Lo que hace que quede limpio y no como un parche borroso:
 - **Dilatación generosa.** Si la máscara no cubre todo el antialiasing, queda un
   "fantasma" con la forma de las letras. Los emojis se dilatan aún más: son grandes y
   muy saturados, y su borde difuminado tiñe el relleno si no se llega a fondo limpio.
-- **Relleno con multigrid.** El hueco se resuelve como un problema de Laplace sobre una
-  pirámide de resoluciones. Con relajación simple, una banda de 400×100 px necesitaría
-  miles de pasadas para que el centro converja, y con pocas se queda con el color de la
-  inicialización.
+- **Relleno con Telea (Fast Marching Method)**, en `telea.js`: un port fiel del
+  `cv::inpaint` de OpenCV con `INPAINT_TELEA`. Cada pixel se extrapola desde sus
+  vecinos conocidos con un peso que favorece la dirección del frente, así que la
+  estructura del fondo (los pliegues de la tela, el borde de un marco) se prolonga
+  dentro del hueco. Se probó también una difusión armónica con multigrid: es unas dos
+  veces más rápida, pero solo promedia y el parche se nota como una mancha borrosa.
+  Validado contra OpenCV sobre fotogramas reales: RMSE de 2–3 sobre 255, diferencia
+  máxima de 10 — indistinguible a la vista.
 - **La caja se reajusta en cada fotograma**, porque el subtítulo se mueve y cambia de
   largo. Si en un fotograma no hay texto, no se toca.
 
@@ -96,9 +103,8 @@ reconstruida y se respeta la composición del video.
 |---|---|
 | Tamaño de letra / margen | Forzar valores en vez de los detectados. |
 | Cobertura de borrado | *Ajustada* daña menos el fondo pero puede dejar rastro; *Amplia* borra más pero difumina un área mayor. |
-| Calidad de relleno | Pasadas de difusión. *Normal* alcanza en casi todo. |
+| Radio de reconstrucción | El `inpaintRadius` de Telea: de cuán lejos se toma la información. Radios grandes suavizan más. |
 | Borrar emojis | Quitar también los emojis del subtítulo original. |
-| Solo borrar | No escribir subtítulos nuevos. |
 
 ---
 
@@ -109,7 +115,7 @@ reconstruida y se respeta la composición del video.
   traducción es más corta que el texto original y deja parte del área a la vista.
   Ayuda bajar la cobertura a *Ajustada*.
 - **Videos largos.** Todo ocurre en memoria. Pensado para clips de redes sociales
-  (hasta ~60 s). Uno de 9 s a 576×1024 tarda unos 15 s en una máquina normal.
+  (hasta ~60 s). Uno de 9 s a 576×1024 tarda unos 25 s en una máquina normal.
 - **Tiempo de la función.** Las funciones de Netlify cortan a los ~10 s. Si el análisis
   falla por tiempo, baja *«Fotogramas de análisis»* a 6, o añade los segmentos a mano.
 - El texto **que forma parte de la escena** (carteles, envases) no se toca — es lo
@@ -125,7 +131,8 @@ netlify/functions/analyze.mjs   llama a Claude (sin dependencias npm)
 public/
   index.html
   css/app.css
-  js/inpaint.js                 máscara + relleno multigrid
+  js/inpaint.js                 detección del texto y construcción de la máscara
+  js/telea.js                   relleno por Fast Marching Method (port de OpenCV)
   js/overlay.js                 dibujo de los subtítulos nuevos
   js/video.js                   demux, decode, encode, mux
   js/pipeline.js                las tres pasadas

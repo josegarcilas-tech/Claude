@@ -13,7 +13,7 @@
 const MODEL = process.env.CLAUDE_MODEL || 'claude-sonnet-5';
 const MAX_FRAMES = 16;
 
-const SYSTEM_PROMPT = `Eres un analista de video especializado en subtitulos incrustados (quemados en la imagen).
+const BASE_PROMPT = `Eres un analista de video especializado en subtitulos incrustados (quemados en la imagen).
 
 Recibes fotogramas en orden cronologico, cada uno con su marca de tiempo en segundos.
 
@@ -21,8 +21,7 @@ Tu tarea:
 1. Localizar el texto de subtitulo SOBREPUESTO por el editor del video.
 2. Agrupar los fotogramas que muestran el MISMO subtitulo en un solo segmento.
 3. Transcribir el texto original exactamente.
-4. Traducirlo al idioma pedido, de forma natural y CORTA (que quepa en 1-2 lineas de video vertical).
-
+__TRANSLATE_STEP__
 Reglas importantes:
 - IGNORA texto que forma parte de la escena real: carteles, cuadros, ropa, envases,
   logos de productos, marcas de agua de la plataforma, nombres de usuario (@usuario).
@@ -34,11 +33,27 @@ Reglas importantes:
   ese subtitulo; si aparece entre dos fotogramas, estima. El sistema afina los cortes
   despues, asi que un margen pequeno esta bien.
 - "position": "top" si el subtitulo esta en la mitad superior, "bottom" si esta en la inferior.
-- En la traduccion NO incluyas emojis.
+__TRANSLATE_RULE__
 - Si no hay ningun subtitulo incrustado, devuelve una lista vacia.
 
 Responde UNICAMENTE con JSON valido, sin explicaciones ni bloques de codigo:
 {"segments":[{"start":0,"end":3.7,"box":{"x":0.08,"y":0.66,"w":0.85,"h":0.09},"position":"bottom","original":"...","translated":"..."}]}`;
+
+/**
+ * En modo "remove" solo hay que localizar el texto, no traducirlo: se le pide a
+ * Claude que devuelva "translated" vacio, lo que ahorra tokens y acorta la respuesta
+ * (importante, porque las funciones de Netlify tienen un limite de tiempo corto).
+ */
+function buildSystemPrompt(mode) {
+  const translating = mode !== 'remove';
+  return BASE_PROMPT
+    .replace('__TRANSLATE_STEP__', translating
+      ? '4. Traducirlo al idioma pedido, de forma natural y CORTA (que quepa en 1-2 lineas de video vertical).\n'
+      : '4. NO traduzcas nada: deja "translated" siempre como cadena vacia "".\n')
+    .replace('__TRANSLATE_RULE__', translating
+      ? '- En la traduccion NO incluyas emojis.'
+      : '- El campo "translated" debe ir vacio ("") en todos los segmentos.');
+}
 
 function json(status, body) {
   return new Response(JSON.stringify(body), {
@@ -100,11 +115,14 @@ export default async (req) => {
   const frames = Array.isArray(payload.frames) ? payload.frames.slice(0, MAX_FRAMES) : [];
   if (!frames.length) return json(400, { error: 'No se recibieron fotogramas.' });
 
+  const mode = payload.mode === 'remove' ? 'remove' : 'translate';
   const targetLanguage = String(payload.targetLanguage || 'espanol').slice(0, 60);
 
   const content = [{
     type: 'text',
-    text: `Idioma de destino para la traduccion: ${targetLanguage}.\n` +
+    text: (mode === 'remove'
+            ? 'Solo hay que LOCALIZAR los subtitulos, no traducirlos.\n'
+            : `Idioma de destino para la traduccion: ${targetLanguage}.\n`) +
           `Te envio ${frames.length} fotogramas en orden cronologico.`
   }];
 
@@ -134,7 +152,7 @@ export default async (req) => {
       body: JSON.stringify({
         model: MODEL,
         max_tokens: 2000,
-        system: SYSTEM_PROMPT,
+        system: buildSystemPrompt(mode),
         messages: [{ role: 'user', content }]
       })
     });

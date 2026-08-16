@@ -192,7 +192,7 @@
           var box = SR.tightenBox(img.data, W, H, segA.pixelBox, 10, inpaintOpts);
           if (!box) continue;
           var built = SR.buildMask(img.data, W, H, box, inpaintOpts);
-          if (SR.inpaint(img.data, W, H, built, inpaintOpts)) touched = true;
+          if (SR.inpaintTelea(img.data, W, H, built, inpaintOpts.radius)) touched = true;
         }
         if (touched) ctx.putImageData(img, 0, 0);
       }
