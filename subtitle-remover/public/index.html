@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Limpiador de subtítulos</title>
+<meta name="description" content="Quita los subtítulos incrustados de un video y los reemplaza por subtítulos traducidos.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎬</text></svg>">
+<link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap">
+    <h1>Limpiador de subtítulos</h1>
+    <p class="lede">Borra el texto incrustado en el video reconstruyendo el fondo, y escribe encima los subtítulos traducidos.</p>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <!-- ---------------------------------------------------------------- paso 1 -->
+  <section class="step" id="step-file">
+    <div class="step-head"><span class="num">1</span><h2>Elige el video</h2></div>
+
+    <div id="drop" class="drop" tabindex="0" role="button" aria-label="Seleccionar video">
+      <input type="file" id="file" accept="video/mp4,video/quicktime,video/*" hidden>
+      <div class="drop-inner">
+        <div class="drop-icon">🎬</div>
+        <p class="drop-main">Arrastra un MP4 aquí o haz clic para elegirlo</p>
+        <p class="drop-sub">El video se procesa en tu navegador. No se sube a ningún servidor.</p>
+      </div>
+    </div>
+
+    <div id="file-info" class="info-card hidden"></div>
+  </section>
+
+  <!-- ---------------------------------------------------------------- paso 2 -->
+  <section class="step hidden" id="step-analyze">
+    <div class="step-head"><span class="num">2</span><h2>Detecta y traduce</h2></div>
+
+    <div class="controls">
+      <label class="field">
+        <span>Idioma de destino</span>
+        <input type="text" id="lang" value="español" autocomplete="off">
+      </label>
+      <label class="field narrow">
+        <span>Fotogramas de análisis</span>
+        <select id="frame-count">
+          <option value="6">6 — más rápido</option>
+          <option value="8" selected>8 — recomendado</option>
+          <option value="12">12 — más preciso</option>
+        </select>
+      </label>
+      <button id="btn-analyze" class="primary">Analizar con Claude</button>
+      <button id="btn-manual" class="ghost">Añadir segmento a mano</button>
+    </div>
+
+    <p class="hint">
+      Claude mira los fotogramas, ubica los subtítulos incrustados, los transcribe y los traduce.
+      Después puedes corregir cualquier cosa antes de procesar.
+    </p>
+
+    <div id="analyze-status" class="status hidden"></div>
+  </section>
+
+  <!-- ---------------------------------------------------------------- paso 3 -->
+  <section class="step hidden" id="step-segments">
+    <div class="step-head"><span class="num">3</span><h2>Revisa los subtítulos</h2></div>
+    <div id="segments" class="segments"></div>
+    <button id="btn-add" class="ghost small">+ Añadir otro segmento</button>
+  </section>
+
+  <!-- ---------------------------------------------------------------- paso 4 -->
+  <section class="step hidden" id="step-render">
+    <div class="step-head"><span class="num">4</span><h2>Procesa el video</h2></div>
+
+    <details class="advanced">
+      <summary>Ajustes avanzados</summary>
+      <div class="controls grid">
+        <label class="field narrow">
+          <span>Tamaño de letra</span>
+          <input type="number" id="opt-fontsize" min="10" max="200" placeholder="auto">
+        </label>
+        <label class="field narrow">
+          <span>Margen vertical (px)</span>
+          <input type="number" id="opt-margin" min="0" max="2000" placeholder="auto">
+        </label>
+        <label class="field narrow">
+          <span>Cobertura de borrado</span>
+          <select id="opt-grow">
+            <option value="3">Ajustada</option>
+            <option value="4" selected>Normal</option>
+            <option value="6">Amplia</option>
+          </select>
+        </label>
+        <label class="field narrow">
+          <span>Calidad de relleno</span>
+          <select id="opt-iter">
+            <option value="30">Rápida</option>
+            <option value="60" selected>Normal</option>
+            <option value="150">Máxima</option>
+          </select>
+        </label>
+        <label class="check">
+          <input type="checkbox" id="opt-emoji" checked>
+          <span>Borrar también los emojis del subtítulo</span>
+        </label>
+        <label class="check">
+          <input type="checkbox" id="opt-onlyremove">
+          <span>Solo borrar, sin escribir subtítulos nuevos</span>
+        </label>
+      </div>
+    </details>
+
+    <button id="btn-render" class="primary big">Procesar video</button>
+
+    <div id="render-status" class="status hidden"></div>
+    <div class="progress hidden" id="progress"><div class="bar" id="progress-bar"></div></div>
+  </section>
+
+  <!-- ---------------------------------------------------------------- salida -->
+  <section class="step hidden" id="step-result">
+    <div class="step-head"><span class="num">✓</span><h2>Listo</h2></div>
+    <video id="result" controls playsinline></video>
+    <div class="result-actions">
+      <a id="download" class="primary" download="video-limpio.mp4">Descargar MP4</a>
+      <button id="btn-restart" class="ghost">Empezar de nuevo</button>
+    </div>
+  </section>
+
+  <div id="unsupported" class="warning hidden"></div>
+
+</main>
+
+<footer class="wrap foot">
+  <p>El video nunca sale de tu navegador. Solo se envían fotogramas sueltos a Claude para detectar y traducir el texto.</p>
+</footer>
+
+<script src="/vendor/mp4box.all.min.js"></script>
+<script src="/vendor/mp4-muxer.js"></script>
+<script src="/js/inpaint.js"></script>
+<script src="/js/overlay.js"></script>
+<script src="/js/video.js"></script>
+<script src="/js/pipeline.js"></script>
+<script src="/js/app.js"></script>
+</body>
+</html>
