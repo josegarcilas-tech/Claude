@@ -148,59 +148,114 @@
     });
   };
 
+  function delay(ms) {
+    return new Promise(function (res) { setTimeout(res, ms); });
+  }
+
   /**
    * Decodifica todos los frames y llama a onFrame(VideoFrame, index).
-   * El callback DEBE cerrar el frame (o devolver una promesa que lo haga).
+   * El callback DEBE cerrar el frame antes de devolver; si devuelve una promesa,
+   * se espera antes de seguir alimentando el decodificador.
+   *
+   * El decodificador se alimenta poco a poco y el frame se procesa dentro del propio
+   * callback de salida. Encolar las muestras de golpe y diferir el procesado hacia una
+   * cadena de promesas deja cientos de VideoFrame vivos a la vez: Chrome lo aguanta,
+   * pero Safari en iPhone se queda sin recursos y aborta con "Decoder failure".
    */
   Video.decodeAll = function (track, samples, onFrame, onProgress) {
-    return new Promise(function (resolve, reject) {
-      var index = 0;
-      var pending = Promise.resolve();
+    var index = 0;
+    var pending = Promise.resolve();
+    var failure = null;
+    var total = samples.length;
 
-      var decoder = new root.VideoDecoder({
-        output: function (frame) {
-          var i = index++;
-          pending = pending.then(function () {
-            return onFrame(frame, i);
-          }).catch(function (e) {
-            try { frame.close(); } catch (_) {}
-            throw e;
+    var decoder = new root.VideoDecoder({
+      output: function (frame) {
+        if (failure) { try { frame.close(); } catch (_) {} return; }
+        var i = index++;
+        var res;
+        try {
+          // sincrono: el callback dibuja y cierra el frame antes de devolver
+          res = onFrame(frame, i);
+        } catch (e) {
+          failure = e;
+          try { frame.close(); } catch (_) {}
+          return;
+        }
+        if (res && typeof res.then === 'function') {
+          pending = pending.then(function () { return res; });
+        }
+        if (onProgress && (i % 5 === 0)) onProgress(i, total);
+      },
+      error: function (e) {
+        failure = e instanceof Error ? e : new Error(String(e && e.message || e));
+      }
+    });
+
+    var config = {
+      codec: track.codec,
+      codedWidth: track.width,
+      codedHeight: track.height,
+      hardwareAcceleration: 'no-preference'
+    };
+    if (track.description) config.description = track.description;
+
+    try {
+      decoder.configure(config);
+    } catch (e) {
+      return Promise.reject(new Error('El códec del video no es compatible (' + track.codec + ').'));
+    }
+
+    var next = 0;
+
+    function decoderError() {
+      var msg = String(failure && failure.message || failure || 'Decoder failure');
+      return new Error(
+        'El navegador no pudo decodificar el video (' + msg + '). ' +
+        'Safari en iPhone y iPad tiene límites de memoria muy estrictos para esto; ' +
+        'prueba en Chrome o Edge de escritorio, o con un video más corto o de menor resolución.'
+      );
+    }
+
+    function pump() {
+      if (failure) return Promise.reject(decoderError());
+
+      // alimentamos en tandas cortas y solo si el decodificador va desahogado
+      var fed = 0;
+      while (next < total && decoder.decodeQueueSize < 6 && fed < 6) {
+        var s = samples[next++];
+        fed++;
+        try {
+          decoder.decode(new root.EncodedVideoChunk({
+            type: s.isKey ? 'key' : 'delta',
+            timestamp: s.timestamp,
+            duration: s.duration,
+            data: s.data
+          }));
+        } catch (e) {
+          failure = e;
+          return Promise.reject(decoderError());
+        }
+      }
+
+      if (next >= total) {
+        // flush() ya espera a que salga todo lo que quede dentro del decodificador
+        return pending
+          .then(function () { return decoder.flush(); })
+          .then(function () { return pending; })
+          .then(function () {
+            if (failure) throw decoderError();
+            try { decoder.close(); } catch (_) {}
+            return index;
           });
-          if (onProgress && (i % 5 === 0)) onProgress(i, samples.length);
-        },
-        error: function (e) { reject(e); }
-      });
-
-      var config = {
-        codec: track.codec,
-        codedWidth: track.width,
-        codedHeight: track.height,
-        hardwareAcceleration: 'no-preference'
-      };
-      if (track.description) config.description = track.description;
-
-      try {
-        decoder.configure(config);
-      } catch (e) {
-        return reject(new Error('El codec del video no es compatible (' + track.codec + ').'));
       }
 
-      for (var i = 0; i < samples.length; i++) {
-        var s = samples[i];
-        decoder.decode(new root.EncodedVideoChunk({
-          type: s.isKey ? 'key' : 'delta',
-          timestamp: s.timestamp,
-          duration: s.duration,
-          data: s.data
-        }));
-      }
+      // esperar al consumidor mantiene acotada la memoria de toda la cadena
+      return pending.then(function () { return delay(0); }).then(pump);
+    }
 
-      decoder.flush().then(function () {
-        return pending;
-      }).then(function () {
-        try { decoder.close(); } catch (_) {}
-        resolve(index);
-      }).catch(reject);
+    return Promise.resolve().then(pump).catch(function (e) {
+      try { decoder.close(); } catch (_) {}
+      throw e;
     });
   };
 

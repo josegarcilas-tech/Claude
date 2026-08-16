@@ -52,8 +52,13 @@ se borra.
 ## Requisitos del navegador
 
 Usa **WebCodecs** para decodificar y recodificar sin subir nada. Funciona en
-**Chrome, Edge y Opera** de escritorio (2023 en adelante). Safari y Firefox todavía no
-lo soportan del todo y la app avisa si es el caso.
+**Chrome, Edge y Opera de escritorio** (2023 en adelante). Firefox todavía no lo
+soporta del todo y la app avisa si es el caso.
+
+**En iPhone y iPad no es fiable.** Safari en iOS sí expone WebCodecs, pero el
+decodificador del sistema tiene límites de memoria mucho más ajustados y aborta con
+*«Decoder failure»* en cuanto el video dura unos segundos. La app detecta iOS y lo
+avisa por adelantado, sin impedir el intento.
 
 Prefiere H.264 para la salida y cae a VP9 o AV1 si el navegador no trae H.264.
 El audio **no se recodifica**: las muestras AAC originales se copian tal cual.
@@ -116,6 +121,7 @@ reconstruida y se respeta la composición del video.
   Ayuda bajar la cobertura a *Ajustada*.
 - **Videos largos.** Todo ocurre en memoria. Pensado para clips de redes sociales
   (hasta ~60 s). Uno de 9 s a 576×1024 tarda unos 25 s en una máquina normal.
+- **iPhone y iPad**, como se explica arriba.
 - **Tiempo de la función.** Las funciones de Netlify cortan a los ~10 s. Si el análisis
   falla por tiempo, baja *«Fotogramas de análisis»* a 6, o añade los segmentos a mano.
 - El texto **que forma parte de la escena** (carteles, envases) no se toca — es lo

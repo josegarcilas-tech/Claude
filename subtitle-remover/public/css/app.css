@@ -166,6 +166,9 @@ button:disabled, .primary[aria-disabled=true] { opacity: .5; cursor: not-allowed
   padding: 16px 18px; margin: 20px 0; font-size: 14.5px;
 }
 .warning h3 { margin: 0 0 8px; font-size: 16px; }
+.warning p { margin: 0; }
+/* aviso, no bloqueo: se puede intentar igual */
+.warning.soft { background: rgba(217, 164, 65, .1); border-color: var(--warn); }
 
 /* --------------------------------------------------------------- segmentos */
 .segments { display: flex; flex-direction: column; gap: 14px; }

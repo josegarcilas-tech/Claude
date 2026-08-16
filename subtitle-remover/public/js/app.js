@@ -60,16 +60,32 @@
 
   // ----------------------------------------------------- compatibilidad
 
+  var ua = navigator.userAgent;
+  var isIOS = /iPad|iPhone|iPod/.test(ua) ||
+              (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+
   if (!SR.Video.isSupported()) {
     var warn = $('unsupported');
     warn.innerHTML =
       '<h3>Tu navegador no puede procesar video aquí</h3>' +
       '<p>Esta herramienta usa <strong>WebCodecs</strong> para decodificar y volver a codificar el video ' +
       'sin subirlo a ningún servidor. Ábrela en <strong>Chrome, Edge u Opera</strong> (versión de escritorio, ' +
-      '2023 en adelante). Safari y Firefox todavía no lo soportan completo.</p>';
+      '2023 en adelante). Firefox todavía no lo soporta completo.</p>';
     show(warn);
     $('drop').style.pointerEvents = 'none';
     $('drop').style.opacity = '.5';
+  } else if (isIOS) {
+    // iOS expone WebCodecs, pero el decodificador del sistema tiene limites de
+    // memoria mucho mas ajustados y suele abortar con "Decoder failure".
+    var note = $('unsupported');
+    note.className = 'warning soft';
+    note.innerHTML =
+      '<h3>Vas a tener problemas en iPhone o iPad</h3>' +
+      '<p>Safari en iOS sí tiene WebCodecs, pero el decodificador del sistema trabaja con ' +
+      'límites de memoria muy ajustados y suele abortar con <em>«Decoder failure»</em> en ' +
+      'videos de varios segundos. Puedes intentarlo —sobre todo con clips cortos—, pero ' +
+      'para que funcione de forma fiable ábrelo en <strong>Chrome o Edge de escritorio</strong>.</p>';
+    show(note);
   }
 
   // -------------------------------------------------------------- paso 1
