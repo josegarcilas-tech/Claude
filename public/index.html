@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>TikDown — Descarga videos de TikTok sin marca de agua</title>
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="hero">
+    <div class="brand">
+      <span class="brand-icon">▶</span>
+      <span class="brand-name">TikDown</span>
+    </div>
+    <h1>Descarga videos de TikTok</h1>
+    <p class="subtitle">Sin marca de agua, en HD, gratis y sin registrarte.</p>
+
+    <form id="download-form" class="download-form" autocomplete="off">
+      <input
+        type="text"
+        id="url-input"
+        name="url"
+        placeholder="Pega el enlace del video de TikTok aquí..."
+        required
+      />
+      <button type="submit" id="submit-btn">Descargar</button>
+    </form>
+
+    <p class="hint">Ejemplo: https://www.tiktok.com/@usuario/video/1234567890123456789</p>
+    <div id="status" class="status" role="status" aria-live="polite"></div>
+  </header>
+
+  <main>
+    <section id="result" class="result hidden">
+      <div class="result-card">
+        <img id="result-cover" class="cover" alt="Portada del video" />
+        <div class="result-info">
+          <h2 id="result-title"></h2>
+          <p id="result-author" class="author"></p>
+          <ul id="result-stats" class="stats"></ul>
+          <div class="actions">
+            <a id="dl-nowm" class="btn btn-primary" href="#" target="_blank" rel="noopener">
+              Descargar sin marca de agua
+            </a>
+            <a id="dl-wm" class="btn btn-secondary" href="#" target="_blank" rel="noopener">
+              Descargar con marca de agua
+            </a>
+            <a id="dl-audio" class="btn btn-tertiary" href="#" target="_blank" rel="noopener">
+              Descargar solo audio (MP3)
+            </a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="how-it-works">
+      <h2>¿Cómo funciona?</h2>
+      <ol>
+        <li>Abre TikTok y copia el enlace del video que quieres descargar.</li>
+        <li>Pega el enlace en el campo de arriba y presiona "Descargar".</li>
+        <li>Elige la opción que prefieras: sin marca de agua, con marca de agua, o solo el audio.</li>
+      </ol>
+      <p class="disclaimer">
+        Esta herramienta depende de un servicio de terceros para extraer los videos y puede fallar si TikTok
+        cambia su plataforma. Úsala solo con contenido que tengas derecho a descargar y respeta los derechos
+        de autor y los términos de servicio de TikTok.
+      </p>
+    </section>
+  </main>
+
+  <footer>
+    <p>TikDown no está afiliado con TikTok. Proyecto con fines educativos.</p>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
