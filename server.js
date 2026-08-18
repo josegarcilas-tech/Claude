@@ -8,6 +8,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.json());
 
 const TIKTOK_URL_REGEX = /https?:\/\/(www\.|vt\.|vm\.|m\.)?tiktok\.com\/\S+/i;
+const ALLOWED_DOWNLOAD_HOST_RE = /(^|\.)(tikwm\.com|tiktokcdn[a-z0-9.-]*\.com|tiktokcdn-[a-z0-9.-]*\.com|tiktokv\.com|muscdn\.com|byteoversea\.com|bytedance\.com)$/i;
 
 function normalizeUrl(rawUrl) {
   const match = rawUrl.match(TIKTOK_URL_REGEX);
@@ -82,12 +83,22 @@ app.post('/api/resolve', async (req, res) => {
   }
 });
 
-// Streams the remote file back through our server so the browser's "download"
-// attribute works cross-origin and saves with a friendly filename.
-app.get('/api/download', async (req, res) => {
+// Streams the remote file back through our own domain with a
+// Content-Disposition: attachment header so mobile Safari saves it into
+// its Downloads panel instead of just opening the file in the video player.
+app.get('/dl', async (req, res) => {
   const { url, filename } = req.query;
   if (!url || typeof url !== 'string') {
     return res.status(400).send('Falta la URL.');
+  }
+  let hostname;
+  try {
+    hostname = new URL(url).hostname;
+  } catch {
+    return res.status(400).send('URL inválida.');
+  }
+  if (!ALLOWED_DOWNLOAD_HOST_RE.test(hostname)) {
+    return res.status(400).send('Dominio no permitido.');
   }
   try {
     const upstream = await fetch(url, {
