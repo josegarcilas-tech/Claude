@@ -76,10 +76,14 @@ y los bloques siguen ahí.
 1. **Elige los videos** — MP4 (H.264/AAC, que es lo que sale de TikTok, Reels o Shorts).
    Puedes soltar varios de una vez, o ir añadiéndolos.
 2. **Elige qué hacer:**
-   - **Quitar los subtítulos y traducirlos** — borra el texto original y escribe la
-     traducción en su lugar (el idioma es configurable, no solo español).
-   - **Solo quitar los subtítulos** — deja el video limpio, sin nada encima. En este
-     modo a Claude solo se le pide localizar el texto, no traducirlo.
+   - **Tapar con la traducción** (por defecto) — pone la traducción sobre una caja de
+     color que cubre el subtítulo original, en Montserrat. No reconstruye nada.
+   - **Borrar y traducir** — reconstruye el fondo y escribe la traducción con contorno,
+     sin caja.
+   - **Solo quitar** — deja el video limpio, sin nada encima. En este modo a Claude solo
+     se le pide localizar el texto, no traducirlo.
+
+   El idioma es configurable en los dos primeros; no tiene por qué ser español.
 3. **Analiza** — Claude mira unos fotogramas de cada video y ubica todo lo sobrepuesto.
 4. **Revisa** — cada video se despliega por separado: puedes corregir la traducción,
    los tiempos, la caja o la posición de cualquier segmento, desactivar los que no
@@ -88,6 +92,30 @@ y los bloques siguen ahí.
 
 En modo traducción, si dejas vacío el campo de un subtítulo, ese tramo concreto solo
 se borra.
+
+### Tapar en vez de borrar
+
+Tapar suele salir mejor que borrar, y es la opción por defecto:
+
+- **No deja mancha.** Borrar tiene que reconstruir el fondo, y sobre bordes marcados eso
+  se difumina. Una caja de color no reconstruye nada: cubre y ya.
+- **Es mucho más rápido** — unos 3 s frente a 25 s en un clip de 9 s, porque se salta
+  todo el trabajo de reconstrucción.
+- **Cubierta garantizada.** Además de una caja por línea (el look de los editores de
+  móvil), se pinta una caja base sobre la zona del subtítulo viejo. Así, aunque la
+  traducción sea más corta o más estrecha que el original, no asoma nada por debajo.
+
+El color de la caja se elige (blanco, negro, amarillo, naranja o uno personalizado) y el
+del texto se calcula solo según lo claro que sea el fondo, con opción a forzarlo.
+
+La tipografía es **Montserrat**, empaquetada en el propio sitio (SIL OFL, licencia
+incluida en `public/fonts/`). Va local a propósito: el canvas no dispara la carga de una
+fuente web como lo haría el texto de una página, así que se pide explícitamente antes de
+dibujar el primer fotograma; con una CDN de por medio, un fallo de red daría un video con
+otra tipografía.
+
+Los recuadros y stickers se siguen borrando aunque estés en modo tapar: ahí no hay
+traducción que poner encima.
 
 ### Dos tipos de elemento
 
@@ -194,6 +222,7 @@ reconstruida y se respeta la composición del video.
 
 | Ajuste | Para qué |
 |---|---|
+| Color de la caja / del texto / tipografía | Solo en modo tapar. |
 | Tamaño de letra / margen | Forzar valores en vez de los detectados. |
 | Cobertura de borrado | *Ajustada* daña menos el fondo pero puede dejar rastro; *Amplia* borra más pero difumina un área mayor. |
 | Radio de reconstrucción | El `inpaintRadius` de Telea: de cuán lejos se toma la información. Radios grandes suavizan más. |
@@ -233,7 +262,8 @@ public/
   css/app.css
   js/inpaint.js                 detección del texto y construcción de la máscara
   js/telea.js                   relleno por Fast Marching Method (port de OpenCV)
-  js/overlay.js                 dibujo de los subtítulos nuevos
+  js/overlay.js                 dibujo de los subtítulos nuevos (con o sin caja)
+  fonts/                        Montserrat (SIL OFL) + licencia
   js/zip.js                     empaquetado ZIP (store) para descargarlo todo
   js/video.js                   demux, decode, encode, mux
   js/pipeline.js                las tres pasadas

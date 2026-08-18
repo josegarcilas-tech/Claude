@@ -244,6 +244,7 @@
     var fps = opts.fps || 30;
     var inpaintOpts = opts.inpaintOptions || {};
     var style = opts.style || {};
+    var coverMode = !!style.boxed;
     // Cuantos frames se limpiaron de verdad. Si sale 0 habiendo segmentos activos,
     // algo fallo silenciosamente (el caso clasico: se leyeron fotogramas que no
     // correspondian) y hay que decirlo en vez de entregar el video intacto.
@@ -274,11 +275,19 @@
       }
       if (active.length) framesWithSegments++;
 
-      if (active.length && !opts.skipRemoval) {
+      // En modo "tapar", un subtitulo con traduccion no se borra: la caja de color
+      // lo cubre. Ahorra el trabajo de reconstruir y evita la mancha lisa que deja
+      // rellenar sobre fondos con estructura.
+      var needsRemoval = active.filter(function (seg) {
+        if (!coverMode) return true;
+        return seg.kind === 'overlay' || !(seg.enabled && seg.translated);
+      });
+
+      if (needsRemoval.length && !opts.skipRemoval) {
         var img = ctx.getImageData(0, 0, W, H);
         var touched = false;
-        for (var a = 0; a < active.length; a++) {
-          var segA = active[a];
+        for (var a = 0; a < needsRemoval.length; a++) {
+          var segA = needsRemoval[a];
           var built;
           if (segA.kind === 'overlay') {
             // opaco: no hay glifos que buscar, se quita el rectangulo entero
@@ -300,20 +309,25 @@
         if (!segD.enabled || !segD.translated) continue;
         // lo que el usuario fije en ajustes avanzados manda sobre lo detectado
         SR.Overlay.draw(ctx, segD.translated, W, H, {
+          boxed: coverMode,
+          fontFamily: style.fontFamily,
           fontSize: style.fontSize || segD.fontSize,
           position: segD.position || 'bottom',
           marginV: style.marginV != null ? style.marginV : segD.marginV,
           color: style.color,
+          bgColor: style.bgColor,
           outline: style.outline,
           outlineRatio: style.outlineRatio,
-          maxWidthRatio: style.maxWidthRatio
+          maxWidthRatio: style.maxWidthRatio,
+          // en modo tapar hay que cubrir exactamente donde estaba el texto viejo
+          coverBox: coverMode ? SR.clampBox(segD.pixelBox, W, H) : null
         });
       }
 
       if (opts.onFrame) opts.onFrame(idx, samples.length, canvas);
       return encoder.addFrame(canvas, ts, dur);
       }, opts.onProgress).then(function () {
-        if (!opts.skipRemoval && framesWithSegments > 0 && cleanedFrames === 0) {
+        if (!opts.skipRemoval && !coverMode && framesWithSegments > 0 && cleanedFrames === 0) {
           throw new Error(
             'No se encontró texto que borrar en ninguno de los ' + framesWithSegments +
             ' fotogramas marcados, así que el video habría salido igual que el original. ' +

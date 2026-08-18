@@ -15,13 +15,16 @@
   var state = {
     jobs: [],
     nextId: 1,
-    mode: 'translate',   // 'translate' = quitar y traducir | 'remove' = solo quitar
+    // 'cover'     = tapar con una caja de color (no reconstruye el fondo)
+    // 'translate' = borrar el fondo y escribir la traduccion con contorno
+    // 'remove'    = solo borrar
+    mode: 'cover',
     zipUrl: null
   };
 
   function currentMode() {
     var checked = document.querySelector('input[name="mode"]:checked');
-    return checked ? checked.value : 'translate';
+    return checked ? checked.value : 'cover';
   }
 
   function doneJobs() {
@@ -271,20 +274,36 @@
   Array.prototype.forEach.call(document.querySelectorAll('input[name="mode"]'), function (radio) {
     radio.addEventListener('change', function () {
       state.mode = currentMode();
-      var translating = state.mode === 'translate';
-      $('lang-field').classList.toggle('hidden', !translating);
-      $('btn-analyze').textContent = translating
-        ? 'Analizar con Claude'
-        : 'Detectar subtítulos con Claude';
-      $('analyze-hint').textContent = translating
-        ? 'Claude ubica todo lo añadido en edición: subtítulos, recuadros de comentario, ' +
-          'stickers, etiquetas y marcas de agua. Los subtítulos se traducen; los recuadros ' +
-          'solo se borran. Después puedes corregir cualquier cosa.'
-        : 'Claude ubica todo lo añadido en edición —subtítulos, recuadros, stickers, marcas ' +
-          'de agua— y se borra todo, sin escribir nada encima.';
+      applyModeUi();
       renderReview();
     });
   });
+
+  function applyModeUi() {
+    var translating = state.mode !== 'remove';
+    $('lang-field').classList.toggle('hidden', !translating);
+    // las opciones de caja solo tienen sentido cuando se tapa
+    $('style-box').classList.toggle('hidden', state.mode !== 'cover');
+    $('btn-analyze').textContent = translating
+      ? 'Analizar con Claude'
+      : 'Detectar subtítulos con Claude';
+    $('analyze-hint').textContent = translating
+      ? 'Claude ubica todo lo añadido en edición: subtítulos, recuadros de comentario, ' +
+        'stickers, etiquetas y marcas de agua. Los subtítulos se traducen; los recuadros ' +
+        'solo se borran. Después puedes corregir cualquier cosa.'
+      : 'Claude ubica todo lo añadido en edición —subtítulos, recuadros, stickers, marcas ' +
+        'de agua— y se borra todo, sin escribir nada encima.';
+  }
+  applyModeUi();
+
+  $('opt-bg').addEventListener('change', function () {
+    $('opt-bg-custom-field').classList.toggle('hidden', $('opt-bg').value !== 'custom');
+  });
+
+  function bgColor() {
+    var v = $('opt-bg').value;
+    return v === 'custom' ? $('opt-bg-custom').value : v;
+  }
 
   $('btn-analyze').addEventListener('click', analyzeAll);
 
@@ -345,7 +364,7 @@
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          mode: state.mode,
+          mode: state.mode === 'remove' ? 'remove' : 'translate',
           targetLanguage: $('lang').value || 'español',
           frames: shots.map(function (s) { return { time: s.time, dataUrl: s.dataUrl }; })
         })
@@ -580,7 +599,7 @@
       body.appendChild(orig);
     }
 
-    if (state.mode === 'translate' && seg.kind !== 'overlay') {
+    if (state.mode !== 'remove' && seg.kind !== 'overlay') {
       var lab = document.createElement('label');
       lab.className = 'field';
       var span = document.createElement('span');
@@ -678,6 +697,10 @@
         removeEmoji: $('opt-emoji').checked
       },
       style: {
+        boxed: state.mode === 'cover',
+        fontFamily: $('opt-font').value,
+        bgColor: bgColor(),
+        color: $('opt-fg').value === 'auto' ? undefined : $('opt-fg').value,
         fontSize: isFinite(fontSize) && fontSize > 0 ? fontSize : undefined,
         marginV: isFinite(marginV) && marginV >= 0 ? marginV : undefined
       }
@@ -720,6 +743,10 @@
       };
 
       return yieldToUi()
+        .then(function () {
+          return SR.Overlay.ensureFont(opts.style.fontFamily,
+            [opts.style.fontSize || Math.round(job.track.width * 0.062)]);
+        })
         .then(function () { return SR.Pipeline.process(opts); })
         .then(function (result) {
           job.blob = result.blob;

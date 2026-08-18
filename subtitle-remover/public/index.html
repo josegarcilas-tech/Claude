@@ -107,16 +107,23 @@
       <fieldset class="modes">
         <legend>¿Qué quieres hacer?</legend>
         <label class="mode">
-          <input type="radio" name="mode" value="translate" checked>
+          <input type="radio" name="mode" value="cover" checked>
           <span class="mode-body">
-            <b>Quitar los subtítulos y traducirlos</b>
-            <small>Borra el texto original y escribe la traducción en su lugar.</small>
+            <b>Tapar con la traducción</b>
+            <small>Pone la traducción sobre una caja de color que cubre el subtítulo original. No hay que reconstruir el fondo, así que no deja mancha.</small>
+          </span>
+        </label>
+        <label class="mode">
+          <input type="radio" name="mode" value="translate">
+          <span class="mode-body">
+            <b>Borrar y traducir</b>
+            <small>Reconstruye el fondo y escribe la traducción con contorno, sin caja.</small>
           </span>
         </label>
         <label class="mode">
           <input type="radio" name="mode" value="remove">
           <span class="mode-body">
-            <b>Solo quitar los subtítulos</b>
+            <b>Solo quitar</b>
             <small>Deja el video limpio, sin ningún texto encima.</small>
           </span>
         </label>
@@ -156,6 +163,38 @@
     <!-- ---------------------------------------------------------------- paso 4 -->
     <section class="step hidden" id="step-render">
       <div class="step-head"><span class="num">4</span><h2>Procesa</h2></div>
+
+      <div class="controls grid" id="style-box">
+        <label class="field narrow">
+          <span>Color de la caja</span>
+          <select id="opt-bg">
+            <option value="#FFFFFF" selected>Blanco</option>
+            <option value="#111111">Negro</option>
+            <option value="#FFE94A">Amarillo</option>
+            <option value="#D97757">Naranja</option>
+            <option value="custom">Personalizado…</option>
+          </select>
+        </label>
+        <label class="field narrow hidden" id="opt-bg-custom-field">
+          <span>Elige el color</span>
+          <input type="color" id="opt-bg-custom" value="#FFFFFF">
+        </label>
+        <label class="field narrow">
+          <span>Color del texto</span>
+          <select id="opt-fg">
+            <option value="auto" selected>Automático</option>
+            <option value="#111111">Negro</option>
+            <option value="#FFFFFF">Blanco</option>
+          </select>
+        </label>
+        <label class="field narrow">
+          <span>Tipografía</span>
+          <select id="opt-font">
+            <option value="Montserrat" selected>Montserrat</option>
+            <option value="system">La del sistema</option>
+          </select>
+        </label>
+      </div>
 
       <details class="advanced">
         <summary>Ajustes avanzados</summary>
