@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#150c2b">
+<meta name="mobile-web-app-capable" content="yes">
+<title>Doblaje — subtítulos en español por lote</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,400;0,600;0,700;0,800;0,900;1,700&family=Poppins:wght@400;600;800&family=Inter:wght@400;600;800&family=Bebas+Neue&family=Anton&family=Archivo+Black&family=Oswald:wght@500;700&family=Nunito:wght@700;900&family=Playfair+Display:wght@700;900&family=Permanent+Marker&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="./styles.css?v=19">
+</head>
+<body data-tab="lote">
+
+<header class="topbar">
+  <div class="mark">
+    <span class="mark-glyph">ES</span>
+    <div>
+      <h1>Doblaje</h1>
+      <p>Subtítulos en español, tu marca de agua y voz pegada, por lote</p>
+    </div>
+  </div>
+  <span id="engineState" class="chip chip-idle">Motor: en espera</span>
+</header>
+
+<div class="workspace">
+
+<!-- Vista previa: queda fija arriba en el celular -->
+<div class="viewer" id="viewer" hidden>
+  <canvas id="preview" class="frame"></canvas>
+  <div class="frame-tools">
+    <input type="range" id="scrub" min="0" max="100" value="0" step="0.1" aria-label="Momento del video">
+    <span class="tc" id="tcNow">0.00s</span>
+  </div>
+</div>
+
+<main class="layout">
+
+  <!-- ============ LOTE ============ -->
+  <section class="pane rail" data-pane="lote" aria-label="Lote de archivos">
+    <div class="pane-head">
+      <h2>Lote</h2>
+      <span id="batchCount" class="count">0</span>
+    </div>
+
+    <form class="urlbox" id="urlForm">
+      <input type="url" id="urlInput" placeholder="Pegá un enlace de TikTok…" inputmode="url" autocomplete="off">
+      <button class="btn btn-primary" id="urlSubmit" type="submit">Importar</button>
+    </form>
+    <p class="hint hint-url">Trae el video sin marca de agua directo a tu lote, sin salir de acá.</p>
+
+    <label class="dropzone" id="dropzone">
+      <input class="filein" type="file" id="fileInput" accept="video/*,image/*" multiple>
+      <strong>Elegí tus videos o imágenes</strong>
+      <span>MP4, MOV, WebM, JPG o PNG</span>
+    </label>
+
+    <div class="hero" id="heroAuto" hidden>
+      <button class="btn btn-accent btn-block btn-hero" id="autoRun" type="button">Traducir y descargar</button>
+      <label class="switch switch-hero">
+        <input type="checkbox" id="muteHero">
+        <span>Silenciar el audio del video</span>
+      </label>
+      <p class="hint">Detecta el subtítulo en inglés, lo tapa, lo escribe en español y te descarga el archivo listo. El audio original se conserva salvo que lo silencies.</p>
+    </div>
+
+    <div class="results" id="results" hidden>
+      <div class="pane-head"><h3>Listo para guardar</h3></div>
+      <ul class="resultlist" id="resultList"></ul>
+      <p class="hint">Tocá cada archivo para guardarlo. En el iPhone se abre el menú de compartir: elegí <strong>Guardar en Fotos</strong> o <strong>Guardar en Archivos</strong>.</p>
+    </div>
+
+    <ul class="clips" id="clipList"></ul>
+    <p class="pane-empty" id="emptyNote">Los archivos que cargues aparecen acá.</p>
+    <button class="btn btn-ghost btn-block" id="clearBatch" type="button">Vaciar lote</button>
+  </section>
+
+  <!-- ============ TEXTO ============ -->
+  <section class="pane col-text" data-pane="texto" aria-label="Texto en pantalla">
+    <p class="pane-empty" id="stageEmpty">Elegí un archivo del lote para empezar a editarlo.</p>
+
+    <div id="stageLive" hidden>
+      <div class="panel">
+        <div class="pane-head"><h3>Texto en pantalla</h3></div>
+        <div class="row-actions">
+          <button class="btn btn-tiny" id="btnOcr" type="button">Leer del video</button>
+          <button class="btn btn-tiny btn-accent" id="btnTranslate" type="button">Traducir todo</button>
+        </div>
+        <ul class="cues" id="cueList"></ul>
+        <button class="btn btn-ghost btn-block" id="addCue" type="button">Agregar línea</button>
+      </div>
+
+      <div class="panel panel-render">
+        <button class="btn btn-accent btn-block" id="reExport" type="button">Descargar con estos cambios</button>
+        <p class="hint">Arma el video de nuevo con el texto que acabás de editar. No vuelve a traducir, así que es más rápido.</p>
+      </div>
+
+      <div class="panel">
+        <div class="pane-head"><h3>Tapar el subtítulo original</h3></div>
+        <label class="switch">
+          <input type="checkbox" id="coverOn" checked>
+          <span>Cubrir la franja del original</span>
+        </label>
+        <div class="grid2">
+          <label class="field">
+            <span>Modo</span>
+            <select id="coverMode">
+              <option value="text" selected>Solo el texto</option>
+              <option value="blur">Franja difuminada</option>
+              <option value="solid">Barra sólida</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>Color de la barra</span>
+            <input type="color" id="coverColor" value="#120a26">
+          </label>
+          <label class="field">
+            <span>Arriba <em id="coverYv">14%</em></span>
+            <input type="range" id="coverY" min="0" max="95" value="14" step="0.5">
+          </label>
+          <label class="field">
+            <span>Alto <em id="coverHv">12%</em></span>
+            <input type="range" id="coverH" min="2" max="60" value="12" step="0.5">
+          </label>
+          <label class="field">
+            <span>Fuerza del difuminado <em id="coverSv">7</em></span>
+            <input type="range" id="coverStrength" min="2" max="10" value="7" step="1">
+          </label>
+        </div>
+        <p class="hint"><strong>Solo el texto</strong> borra únicamente las letras originales y deja el resto del video intacto. La franja de abajo marca dónde buscarlas, no se dibuja.</p>
+      </div>
+    </div>
+  </section>
+
+  <div class="sidecol">
+
+  <!-- ============ LETRA ============ -->
+  <section class="pane col-side" data-pane="letra" aria-label="Estilo de letra">
+    <div class="panel">
+      <div class="pane-head"><h3>Letra</h3><span class="tag">Todo el lote</span></div>
+
+      <label class="field">
+        <span>Fuente</span>
+        <select id="fontFamily">
+          <option value="Montserrat" selected>Montserrat</option>
+          <option value="Poppins">Poppins</option>
+          <option value="Inter">Inter</option>
+          <option value="Bebas Neue">Bebas Neue</option>
+          <option value="Anton">Anton</option>
+          <option value="Archivo Black">Archivo Black</option>
+          <option value="Oswald">Oswald</option>
+          <option value="Nunito">Nunito</option>
+          <option value="Playfair Display">Playfair Display</option>
+          <option value="Permanent Marker">Permanent Marker</option>
+        </select>
+      </label>
+
+      <div class="grid2">
+        <label class="field">
+          <span>Grosor</span>
+          <select id="fontWeight">
+            <option value="400">Normal</option>
+            <option value="600">Semi</option>
+            <option value="700">Negrita</option>
+            <option value="800" selected>Extra</option>
+            <option value="900">Máxima</option>
+          </select>
+        </label>
+        <label class="field">
+          <span>Mayúsculas</span>
+          <select id="fontCase">
+            <option value="none" selected>Como se escribió</option>
+            <option value="upper">TODO MAYÚSCULA</option>
+          </select>
+        </label>
+        <label class="field">
+          <span>Tamaño <em id="fontSizev">4.2%</em></span>
+          <input type="range" id="fontSize" min="2" max="9" value="4.2" step="0.1">
+        </label>
+        <label class="field">
+          <span>Borde <em id="strokeWv">18%</em></span>
+          <input type="range" id="strokeW" min="0" max="40" value="18" step="1">
+        </label>
+        <label class="field">
+          <span>Color del texto</span>
+          <input type="color" id="fillColor" value="#ffffff">
+        </label>
+        <label class="field">
+          <span>Color del borde</span>
+          <input type="color" id="strokeColor" value="#000000">
+        </label>
+        <label class="field">
+          <span>Alto en pantalla <em id="textYv">16%</em></span>
+          <input type="range" id="textY" min="2" max="92" value="16" step="0.5">
+        </label>
+        <label class="field">
+          <span>Ancho máximo <em id="maxWv">86%</em></span>
+          <input type="range" id="maxW" min="40" max="98" value="86" step="1">
+        </label>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="pane-head"><h3>Marca de agua</h3><span class="tag">Todo el lote</span></div>
+
+      <label class="voicedrop" id="logoDrop">
+        <input class="filein" type="file" id="logoInput" accept="image/*">
+        <strong id="logoName">Subir el logo de tu marca</strong>
+        <span>PNG con fondo transparente da el mejor resultado</span>
+      </label>
+
+      <label class="switch">
+        <input type="checkbox" id="logoOn">
+        <span>Mostrar la marca de agua</span>
+      </label>
+
+      <div class="grid2">
+        <label class="field">
+          <span>Ubicación</span>
+          <select id="logoPos">
+            <option value="br" selected>Abajo derecha</option>
+            <option value="bl">Abajo izquierda</option>
+            <option value="tr">Arriba derecha</option>
+            <option value="tl">Arriba izquierda</option>
+          </select>
+        </label>
+        <label class="field">
+          <span>Intensidad <em id="logoOpacityv">70%</em></span>
+          <input type="range" id="logoOpacity" min="5" max="100" value="70" step="1">
+        </label>
+        <label class="field">
+          <span>Tamaño <em id="logoSizev">16%</em></span>
+          <input type="range" id="logoSize" min="5" max="40" value="16" step="1">
+        </label>
+        <label class="field">
+          <span>Margen <em id="logoMarginv">4%</em></span>
+          <input type="range" id="logoMargin" min="0" max="12" value="4" step="0.5">
+        </label>
+      </div>
+      <button class="btn btn-ghost btn-block" id="logoClear" type="button">Quitar el logo</button>
+      <p class="hint">Se aplica a todo el lote, en todos los archivos que exportes.</p>
+    </div>
+  </section>
+
+  <!-- ============ AUDIO + EXPORTAR ============ -->
+  <section class="pane col-side" data-pane="audio" aria-label="Audio y exportación">
+    <div class="panel">
+      <div class="pane-head"><h3>Audio</h3></div>
+      <label class="field">
+        <span>Qué se escucha</span>
+        <select id="audioMode">
+          <option value="keep" selected>Dejar el audio original</option>
+          <option value="voice">Reemplazarlo por la voz de ElevenLabs</option>
+          <option value="mix">Voz encima, audio original bajito</option>
+        </select>
+      </label>
+
+      <label class="switch">
+        <input type="checkbox" id="muteAll">
+        <span>Silenciar todo (video sin sonido)</span>
+      </label>
+
+      <div class="grid2" id="mixControls">
+        <label class="field">
+          <span>Música <em id="musicVolv">28%</em></span>
+          <input type="range" id="musicVol" min="0" max="100" value="28" step="1">
+        </label>
+        <label class="field">
+          <span>Voz arranca en <em id="voiceDelayv">0.5s</em></span>
+          <input type="range" id="voiceDelay" min="0" max="5" value="0.5" step="0.1">
+        </label>
+      </div>
+
+      <label class="voicedrop" id="voiceDrop">
+        <input class="filein" type="file" id="voiceInput" accept="audio/*">
+        <strong id="voiceName">Subir la voz de ElevenLabs</strong>
+        <span>MP3, WAV o M4A</span>
+      </label>
+      <button class="btn btn-ghost btn-block" id="voiceToAll" type="button">Usar esta voz en todo el lote</button>
+    </div>
+
+    <div class="panel panel-render">
+      <div class="pane-head"><h3>Exportar</h3></div>
+      <label class="switch">
+        <input type="checkbox" id="zipAll" checked>
+        <span>Descargar todo junto en un ZIP</span>
+      </label>
+      <button class="btn btn-primary btn-block" id="renderOne" type="button">Exportar el seleccionado</button>
+      <button class="btn btn-accent btn-block" id="renderAll" type="button">Exportar el lote completo</button>
+      <p class="hint" id="mobileNote" hidden>En el celular el video se arma reproduciéndolo, así que tarda lo que dura el clip. Dejá la pantalla encendida y esta pestaña al frente hasta que termine.</p>
+    </div>
+  </section>
+
+  </div><!-- /sidecol -->
+
+</main>
+
+</div><!-- /workspace -->
+
+<nav class="tabbar" id="tabbar" aria-label="Secciones">
+  <button type="button" data-go="lote" class="tab on">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M10 9.5l5 2.5-5 2.5z"/></svg>
+    <span>Lote</span>
+    <i class="badge" id="tabBadge" hidden>0</i>
+  </button>
+  <button type="button" data-go="texto" class="tab">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h11M4 18h16"/></svg>
+    <span>Texto</span>
+  </button>
+  <button type="button" data-go="letra" class="tab">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 19L12 5l7 14M8.5 14h7"/></svg>
+    <span>Letra</span>
+  </button>
+  <button type="button" data-go="audio" class="tab">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9.5v5h3.5L12 18V6L7.5 9.5zM16 9.5a4 4 0 010 5"/></svg>
+    <span>Audio</span>
+  </button>
+</nav>
+
+<div class="work" id="progressWrap" hidden role="status">
+  <div class="work-track"><i id="progressBar"></i></div>
+  <p id="progressText">Preparando…</p>
+</div>
+
+<div class="toast" id="toast" hidden></div>
+
+<script src="https://unpkg.com/@ffmpeg/ffmpeg@0.12.10/dist/umd/ffmpeg.js"></script>
+<script src="https://unpkg.com/@ffmpeg/util@0.12.1/dist/umd/index.js"></script>
+<script src="https://unpkg.com/jszip@3.10.1/dist/jszip.min.js"></script>
+<script src="https://unpkg.com/tesseract.js@5.1.1/dist/tesseract.min.js"></script>
+<script src="./app.js?v=19"></script>
+</body>
+</html>
