@@ -387,8 +387,22 @@ function roundRectPath(ctx, x, y, w, h, r) {
   ctx.closePath();
 }
 
-/** Dibuja el bloque de subtítulo. Devuelve la caja usada. */
-function drawSubtitle(ctx, rawText, W, H, yPct) {
+/** Recorta una caja al cuadro, sin deformarla cuando se sale por un costado. */
+function cajaDentro(x, y, w, h, W, H) {
+  const x0 = Math.max(0, Math.floor(x));
+  const y0 = Math.max(0, Math.floor(y));
+  const x1 = Math.min(W, Math.ceil(x + w));
+  const y1 = Math.min(H, Math.ceil(y + h));
+  return { x: x0, y: y0, w: Math.max(0, x1 - x0), h: Math.max(0, y1 - y0) };
+}
+
+/**
+ * Dibuja el bloque de subtítulo. Devuelve la caja usada.
+ * xPct/yPct son la posición de ESTA línea (centro horizontal y borde
+ * superior, en % del cuadro). Si vienen vacíos usa el centro y la altura
+ * general de la pestaña Letra.
+ */
+function drawSubtitle(ctx, rawText, W, H, yPct, xPct) {
   const s = state.style;
   let text = rawText.trim();
   if (!text) return null;
@@ -407,7 +421,7 @@ function drawSubtitle(ctx, rawText, W, H, yPct) {
   const lines = wrapLines(ctx, text, maxPx);
   const lineH = px * 1.24;
   const top = ((yPct == null ? s.y : yPct) / 100) * H;
-  const cx = W / 2;
+  const cx = ((xPct == null ? 50 : xPct) / 100) * W;
 
   let widest = 0;
   lines.forEach(l => { widest = Math.max(widest, ctx.measureText(l).width); });
@@ -450,21 +464,17 @@ function drawSubtitle(ctx, rawText, W, H, yPct) {
   });
 
   if (boxRect) {
-    return {
-      x: Math.max(0, Math.floor(boxRect.x)),
-      y: Math.max(0, Math.floor(boxRect.y)),
-      w: Math.min(W, Math.ceil(boxRect.w)),
-      h: Math.min(H, Math.ceil(boxRect.h))
-    };
+    return cajaDentro(boxRect.x, boxRect.y, boxRect.w, boxRect.h, W, H);
   }
 
   const pad = strokePx + px * 0.3;
-  return {
-    x: Math.max(0, Math.floor(cx - widest / 2 - pad)),
-    y: Math.max(0, Math.floor(top - pad)),
-    w: Math.min(W, Math.ceil(widest + pad * 2)),
-    h: Math.min(H, Math.ceil(lines.length * lineH + pad * 2))
-  };
+  return cajaDentro(
+    cx - widest / 2 - pad,
+    top - pad,
+    widest + pad * 2,
+    lines.length * lineH + pad * 2,
+    W, H
+  );
 }
 
 const _blurA = document.createElement('canvas');
@@ -782,6 +792,10 @@ function renderStage() {
   }
 }
 
+// cajas de las líneas dibujadas en el último paint, para el arrastre con el dedo
+let cajasEnPantalla = [];
+let arrastre = null;
+
 function paint() {
   const clip = currentClip();
   if (!clip) return;
@@ -792,10 +806,104 @@ function paint() {
   pctx.drawImage(clip.media, 0, 0, W, H);
   drawCover(pctx, clip.media, W, H, clip, clip.isVideo ? clip.time : 0);
 
-  cuesEn(clip, clip.isVideo ? clip.time : null)
-    .forEach(c => drawSubtitle(pctx, c.text, W, H, c.y));
+  // se guarda la caja de cada línea para saber cuál agarra el dedo al arrastrar
+  cajasEnPantalla = [];
+  cuesEn(clip, clip.isVideo ? clip.time : null).forEach(c => {
+    const box = drawSubtitle(pctx, c.text, W, H, c.y, c.x);
+    if (box && box.w > 0 && box.h > 0) cajasEnPantalla.push({ cue: c, box });
+  });
+
   drawLogo(pctx, W, H);
 }
+
+/* ---------------- mover el subtítulo con el dedo ---------------- */
+
+/** Convierte un toque de la pantalla a coordenadas del video. */
+function puntoEnLienzo(e) {
+  const r = preview.getBoundingClientRect();
+  if (!r.width || !r.height) return null;
+  return {
+    x: (e.clientX - r.left) / r.width * preview.width,
+    y: (e.clientY - r.top) / r.height * preview.height
+  };
+}
+
+/** La línea que está bajo el dedo. Se recorre al revés: gana la de encima. */
+function cueEnPunto(p) {
+  const margen = Math.max(10, preview.height * 0.012);   // holgura para el dedo
+  for (let i = cajasEnPantalla.length - 1; i >= 0; i--) {
+    const { cue, box } = cajasEnPantalla[i];
+    if (p.x >= box.x - margen && p.x <= box.x + box.w + margen &&
+        p.y >= box.y - margen && p.y <= box.y + box.h + margen) {
+      return cue;
+    }
+  }
+  return null;
+}
+
+preview.addEventListener('pointerdown', e => {
+  const clip = currentClip();
+  if (!clip || busy) return;
+  const p = puntoEnLienzo(e);
+  if (!p) return;
+  const cue = cueEnPunto(p);
+  if (!cue) return;
+
+  e.preventDefault();
+  try { preview.setPointerCapture(e.pointerId); } catch (err) { /* sin captura igual funciona */ }
+
+  const W = preview.width, H = preview.height;
+  arrastre = {
+    id: e.pointerId,
+    cue,
+    // desfase entre el dedo y la posición de la línea, para que no pegue un salto
+    dx: p.x - ((cue.x == null ? 50 : cue.x) / 100) * W,
+    dy: p.y - ((cue.y == null ? state.style.y : cue.y) / 100) * H,
+    movido: false
+  };
+  preview.classList.add('moviendo');
+});
+
+preview.addEventListener('pointermove', e => {
+  if (!arrastre || e.pointerId !== arrastre.id) {
+    // sin arrastrar: la manito solo aparece encima de un subtítulo
+    if (!arrastre && e.pointerType === 'mouse') {
+      const q = puntoEnLienzo(e);
+      preview.classList.toggle('sobre-cue', !!(q && cueEnPunto(q)));
+    }
+    return;
+  }
+  const p = puntoEnLienzo(e);
+  if (!p) return;
+  e.preventDefault();
+
+  const W = preview.width, H = preview.height;
+  const cue = arrastre.cue;
+
+  // se limita con el tamaño real del bloque para que no se escape del cuadro
+  const entrada = cajasEnPantalla.find(b => b.cue === cue);
+  const medioAncho = entrada ? (entrada.box.w / W) * 50 : 0;
+  const alto = entrada ? (entrada.box.h / H) * 100 : 0;
+
+  const x = (p.x - arrastre.dx) / W * 100;
+  const y = (p.y - arrastre.dy) / H * 100;
+
+  cue.x = medioAncho * 2 >= 100 ? 50 : Math.max(medioAncho, Math.min(100 - medioAncho, x));
+  cue.y = Math.max(0, Math.min(Math.max(0, 100 - alto), y));
+  arrastre.movido = true;
+  paint();
+});
+
+function terminarArrastre(e) {
+  if (!arrastre || (e && e.pointerId !== arrastre.id)) return;
+  const movido = arrastre.movido;
+  arrastre = null;
+  preview.classList.remove('moviendo');
+  if (movido) renderCues();   // que los deslizadores muestren los valores nuevos
+}
+
+preview.addEventListener('pointerup', terminarArrastre);
+preview.addEventListener('pointercancel', terminarArrastre);
 
 $('scrub').addEventListener('input', e => {
   const clip = currentClip();
@@ -817,6 +925,7 @@ function renderCues() {
   clip.cues.forEach((cue, i) => {
     const active = clip.isVideo && clip.time >= cue.start && clip.time <= cue.end;
     const curY = cue.y != null ? cue.y : state.style.y;
+    const curX = cue.x != null ? cue.x : 50;
     const li = document.createElement('li');
     li.className = 'cue' + (active ? ' active' : '');
     li.innerHTML = `
@@ -830,9 +939,14 @@ function renderCues() {
         <button class="cue-del" type="button" aria-label="Quitar línea">×</button>
       </div>
       <div class="cue-pos">
-        <span>Posición vertical <em class="cue-posv">${curY.toFixed(1)}%</em></span>
+        <span>Arriba/abajo <em class="cue-posv">${curY.toFixed(1)}%</em></span>
         <input type="range" class="cue-y" min="0" max="94" step="0.5" value="${curY}" aria-label="Posición vertical de esta línea">
-        <button class="cue-posreset" type="button" title="Usar la altura general de la pestaña Letra">↺</button>
+        <button class="cue-posreset" type="button" title="Volver al centro y a la altura general">↺</button>
+      </div>
+      <div class="cue-pos">
+        <span>Izq./der. <em class="cue-posh">${curX.toFixed(1)}%</em></span>
+        <input type="range" class="cue-x" min="0" max="100" step="0.5" value="${curX}" aria-label="Posición horizontal de esta línea">
+        <button class="cue-pick" type="button" title="Ver esta línea en la vista previa">◎</button>
       </div>
       <textarea placeholder="Escribí el texto en español…">${esc(cue.text)}</textarea>`;
 
@@ -857,9 +971,29 @@ function renderCues() {
       yLabel.textContent = cue.y.toFixed(1) + '%';
       paint();
     });
+
+    const xRange = li.querySelector('.cue-x');
+    const xLabel = li.querySelector('.cue-posh');
+    xRange.addEventListener('input', e => {
+      cue.x = parseFloat(e.target.value);
+      xLabel.textContent = cue.x.toFixed(1) + '%';
+      paint();
+    });
+
     li.querySelector('.cue-posreset').addEventListener('click', () => {
-      cue.y = null;
+      cue.y = null; cue.x = null;
       renderCues(); paint();
+    });
+
+    // salta al momento de esta línea, así se la puede arrastrar en la vista previa
+    li.querySelector('.cue-pick').addEventListener('click', () => {
+      if (!clip.isVideo) { goTab('texto'); return; }
+      const t = Math.min(clip.dur, cue.start + 0.15);
+      clip.time = t;
+      $('scrub').value = t;
+      $('tcNow').textContent = t.toFixed(2) + 's';
+      clip.media.currentTime = t;
+      clip.media.onseeked = () => { paint(); renderCues(); };
     });
     li.querySelector('.cue-n').addEventListener('click', () => {
       if (!clip.isVideo) return;
@@ -1164,7 +1298,7 @@ function cueOverlay(clip, cue) {
   const c = document.createElement('canvas');
   c.width = W; c.height = H;
   const cx = c.getContext('2d');
-  const box = drawSubtitle(cx, cue.text, W, H, cue.y);
+  const box = drawSubtitle(cx, cue.text, W, H, cue.y, cue.x);
   if (!box || box.w <= 0 || box.h <= 0) return null;
 
   const out = document.createElement('canvas');
@@ -1189,7 +1323,7 @@ async function exportImage(clip) {
   const cx = c.getContext('2d');
   cx.drawImage(clip.media, 0, 0, W, H);
   drawCover(cx, clip.media, W, H, clip, 0);
-  cuesEn(clip, null).forEach(c => drawSubtitle(cx, c.text, W, H, c.y));
+  cuesEn(clip, null).forEach(c => drawSubtitle(cx, c.text, W, H, c.y, c.x));
   drawLogo(cx, W, H);
   const blob = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.92));
   return { name: baseName(clip.file.name) + '-es.jpg', data: new Uint8Array(await blob.arrayBuffer()) };
@@ -2136,7 +2270,7 @@ async function exportVideoLive(clip, report) {
       const t = v.currentTime;
       cx.drawImage(v, 0, 0, W, H);
       drawCover(cx, v, W, H, clip, t);
-      cuesEn(clip, t).forEach(c => drawSubtitle(cx, c.text, W, H, c.y));
+      cuesEn(clip, t).forEach(c => drawSubtitle(cx, c.text, W, H, c.y, c.x));
       drawLogo(cx, W, H);
       cuadros++;
     } catch (e) { /* un cuadro perdido no rompe nada */ }

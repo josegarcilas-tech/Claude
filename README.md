@@ -23,6 +23,7 @@ Cuando termina, revisá el resultado. Si algo quedó torcido —una palabra mal 
 - **Traduce al español.** Manda las líneas a la API de Claude y las devuelve en español latino, lista la pestaña **Texto** para retocarlas a mano.
 - **Tapa el subtítulo original** sin tocar el resto del cuadro: solo difumina la silueta de las letras (o, si preferís, toda la franja).
 - **Edición por línea de tiempo.** Cada línea de texto tiene su "desde" y "hasta" en segundos; se puede ajustar, agregar o borrar, y la vista previa salta a ese momento con un toque.
+- **Cada línea se mueve donde quieras.** Arrastrá el subtítulo con el dedo (o el mouse) sobre la vista previa para llevarlo justo encima del original y taparlo. También hay deslizadores de posición arriba/abajo e izquierda/derecha por si querés precisión, y un botón para devolver la línea al centro.
 - **Marca de agua con tu logo.** Subís una imagen (PNG con fondo transparente da el mejor resultado), elegís la esquina, el tamaño y la **intensidad** (opacidad) con la que se ve, y queda pegada en todo el lote.
 - **Importar desde TikTok.** Pegás el enlace del video y se descarga directo a tu lote, sin marca de agua de TikTok, listo para traducir.
 - **Descarga del video terminado.** Un archivo o el lote completo en un ZIP; en iPhone se abre el menú de compartir para guardarlo en Fotos o Archivos.
@@ -63,7 +64,7 @@ No necesita ninguna llave: usa un servicio externo (tikwm.com) para resolver el 
 1. **Soltá los archivos** en el panel de la izquierda, o pegá un enlace de TikTok para importarlo.
 2. **Ubicá la franja** que tapa el subtítulo original: movela con los deslizadores hasta cubrirlo por completo. Podés difuminarla, poner una barra sólida, o tapar solo las letras.
 3. **Poné el texto**: escribilo directo, leelo del video con OCR, o mandalo a traducir con Claude.
-4. **Ajustá los tiempos** de cada línea (desde / hasta, en segundos).
+4. **Ajustá los tiempos** de cada línea (desde / hasta, en segundos) y **arrastrala en la vista previa** hasta que tape el subtítulo original.
 5. **Elegí la letra**: fuente, grosor, tamaño, borde, colores y altura en pantalla.
 6. **Subí tu logo** en la pestaña Letra, elegí la esquina, el tamaño y la intensidad con la que se ve.
 7. **Subí la voz** doblada si tenés una, o dejá el audio original.
