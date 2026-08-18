@@ -25,12 +25,14 @@ const state = {
   cover: { on: true, mode: 'box', color: '#120a26', strength: 9, y: 14, h: 12, zones: null, boxOpacity: 95, boxRadius: 22, boxMinW: 72 },
   audio: { mode: 'keep', mute: false, musicVol: 28, voiceDelay: 0.5 },
   logo: { on: false, file: null, img: null, opacity: 70, size: 16, margin: 4, pos: 'br' },
+  exportLado: 1280,   // tope del lado largo al exportar; 0 = tal cual el original
   zip: true
 };
 
 let ffmpeg = null;
 let ffmpegReady = false;
 let busy = false;
+let ultimoFpsExport = 0;   // cuadros por segundo logrados en la última exportación
 
 /**
  * iOS solo deja arrancar el audio dentro del toque del usuario.
@@ -333,8 +335,8 @@ urlForm.addEventListener('submit', async e => {
     if (!videoUrl) throw new Error('Ese video no trajo un enlace descargable.');
 
     urlSubmit.textContent = 'Descargando…';
-    const idSafe = (data.id || Date.now()).toString();
-    const filename = `tiktok_${idSafe}.mp4`;
+    const idSafe = (data.id || Date.now()).toString().replace(/[^\w-]/g, '');
+    const filename = `${data.fuente === 'instagram' ? 'instagram' : 'tiktok'}_${idSafe}.mp4`;
     const dlRes = await fetch(proxiedDownload(videoUrl, filename));
     if (!dlRes.ok) throw new Error('No se pudo descargar el archivo del video.');
     const blob = await dlRes.blob();
@@ -405,13 +407,14 @@ function cajaDentro(x, y, w, h, W, H) {
  * superior, en % del cuadro). Si vienen vacíos usa el centro y la altura
  * general de la pestaña Letra.
  */
-function drawSubtitle(ctx, rawText, W, H, yPct, xPct) {
+function drawSubtitle(ctx, rawText, W, H, yPct, xPct, sizePct) {
   const s = state.style;
   let text = rawText.trim();
   if (!text) return null;
   if (s.caseMode === 'upper') text = text.toUpperCase();
 
-  const px = (s.size / 100) * H;
+  // sizePct: tamaño propio de ESTA línea; sin él manda el general de Letra
+  const px = ((sizePct == null ? s.size : sizePct) / 100) * H;
   const strokePx = (s.strokeW / 100) * px;
   const maxPx = (s.maxW / 100) * W;
 
@@ -825,7 +828,7 @@ function paint() {
   // se guarda la caja de cada línea para saber cuál agarra el dedo al arrastrar
   cajasEnPantalla = [];
   cuesEn(clip, clip.isVideo ? clip.time : null).forEach(c => {
-    const box = drawSubtitle(pctx, c.text, W, H, c.y, c.x);
+    const box = drawSubtitle(pctx, c.text, W, H, c.y, c.x, c.size);
     if (box && box.w > 0 && box.h > 0) cajasEnPantalla.push({ cue: c, box });
   });
 
@@ -1025,6 +1028,7 @@ function renderCues() {
     const active = clip.isVideo && clip.time >= cue.start && clip.time <= cue.end;
     const curY = cue.y != null ? cue.y : state.style.y;
     const curX = cue.x != null ? cue.x : 50;
+    const curT = cue.size != null ? cue.size : state.style.size;
     const li = document.createElement('li');
     li.className = 'cue' + (active ? ' active' : '');
     li.innerHTML = `
@@ -1046,6 +1050,11 @@ function renderCues() {
         <span>Izq./der. <em class="cue-posh">${curX.toFixed(1)}%</em></span>
         <input type="range" class="cue-x" min="0" max="100" step="0.5" value="${curX}" aria-label="Posición horizontal de esta línea">
         <button class="cue-pick" type="button" title="Ver esta línea en la vista previa">◎</button>
+      </div>
+      <div class="cue-pos">
+        <span>Tamaño <em class="cue-sizev">${curT.toFixed(1)}%</em></span>
+        <input type="range" class="cue-size" min="1.5" max="14" step="0.1" value="${curT}" aria-label="Tamaño de esta línea">
+        <button class="cue-sizereset" type="button" title="Volver al tamaño general de la pestaña Letra">↺</button>
       </div>
       <textarea placeholder="Escribí el texto en español…">${esc(cue.text)}</textarea>`;
 
@@ -1077,6 +1086,18 @@ function renderCues() {
       cue.x = parseFloat(e.target.value);
       xLabel.textContent = cue.x.toFixed(1) + '%';
       paint();
+    });
+
+    const tRange = li.querySelector('.cue-size');
+    const tLabel = li.querySelector('.cue-sizev');
+    tRange.addEventListener('input', e => {
+      cue.size = parseFloat(e.target.value);
+      tLabel.textContent = cue.size.toFixed(1) + '%';
+      paint();
+    });
+    li.querySelector('.cue-sizereset').addEventListener('click', () => {
+      cue.size = null;
+      renderCues(); paint();
     });
 
     li.querySelector('.cue-posreset').addEventListener('click', () => {
@@ -1346,6 +1367,7 @@ $('muteAll').addEventListener('change', e => setMute(e.target.checked));
 $('muteHero').addEventListener('change', e => setMute(e.target.checked));
 
 $('zipAll').addEventListener('change', e => { state.zip = e.target.checked; });
+$('exportQuality').addEventListener('change', e => { state.exportLado = parseInt(e.target.value, 10) || 0; });
 
 /* ---------------- motor de video ---------------- */
 
@@ -1399,7 +1421,7 @@ function cueOverlay(clip, cue, anchoSalida, altoSalida) {
   const c = document.createElement('canvas');
   c.width = W; c.height = H;
   const cx = c.getContext('2d');
-  const box = drawSubtitle(cx, cue.text, W, H, cue.y, cue.x);
+  const box = drawSubtitle(cx, cue.text, W, H, cue.y, cue.x, cue.size);
   if (!box || box.w <= 0 || box.h <= 0) return null;
 
   const out = document.createElement('canvas');
@@ -1424,7 +1446,7 @@ async function exportImage(clip) {
   const cx = c.getContext('2d');
   cx.drawImage(clip.media, 0, 0, W, H);
   drawCover(cx, clip.media, W, H, clip, 0);
-  cuesEn(clip, null).forEach(c => drawSubtitle(cx, c.text, W, H, c.y, c.x));
+  cuesEn(clip, null).forEach(c => drawSubtitle(cx, c.text, W, H, c.y, c.x, c.size));
   drawLogo(cx, W, H);
   const blob = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.92));
   return { name: baseName(clip.file.name) + '-es.jpg', data: new Uint8Array(await blob.arrayBuffer()) };
@@ -1528,6 +1550,14 @@ async function exportVideo(clip) {
     filters.push(`[mu][vo]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[aout]`);
     maps.push('-map', '[aout]');
     args.push('-c:a', 'aac', '-b:a', '192k');
+  }
+
+  // mismo tope de tamaño que en el celular, para que la calidad elegida en la
+  // pestaña Audio signifique lo mismo en los dos motores
+  const salida = medidasDeSalida(clip);
+  if (salida.escalado) {
+    filters.push(`[${last}]scale=${salida.w}:${salida.h}:flags=lanczos[vesc]`);
+    last = 'vesc';
   }
 
   if (filters.length) args.push('-filter_complex', filters.join(';'));
@@ -1669,7 +1699,8 @@ async function runExport(clips) {
 
     setBar(1, 'Preparando la descarga…');
 
-    setBar(1, `Listo: ${results.length} archivo${results.length === 1 ? '' : 's'}.`);
+    const detalleFps = ultimoFpsExport ? ` · ${ultimoFpsExport} cuadros/s` : '';
+    setBar(1, `Listo: ${results.length} archivo${results.length === 1 ? '' : 's'}.${detalleFps}`);
     await entregarArchivos(results);
 
     toast('Exportación terminada.');
@@ -2203,7 +2234,8 @@ async function runAuto(clips) {
       return;
     }
 
-    setBar(1, `Listo: ${results.length} archivo${results.length === 1 ? '' : 's'}.`);
+    const detalleFps = ultimoFpsExport ? ` · ${ultimoFpsExport} cuadros/s` : '';
+    setBar(1, `Listo: ${results.length} archivo${results.length === 1 ? '' : 's'}.${detalleFps}`);
     await entregarArchivos(results);
 
     toast(fallos.length
@@ -2258,24 +2290,27 @@ function recorderMime() {
 }
 
 /**
- * Lado largo máximo al grabar en el teléfono. Un cuadro de 1080x1920 son dos
- * millones de píxeles que hay que copiar Y comprimir treinta veces por
- * segundo; medido en un iPhone, ahí solo salían 14 cuadros por segundo. A
- * 1280 de lado largo es menos de la mitad de trabajo y el video sale parejo.
- * Para TikTok/Reels 720x1280 es tamaño de sobra: lo reencodifican igual.
+ * Medidas del archivo final. Un cuadro de 1080x1920 son dos millones de
+ * píxeles que hay que copiar Y comprimir treinta veces por segundo; medido en
+ * un iPhone, ahí salían 14 cuadros por segundo. Topando el lado largo es
+ * menos de la mitad de trabajo y el video sale parejo. Para TikTok/Reels
+ * 720x1280 es tamaño de sobra: lo reencodifican igual.
  */
-const LADO_MAX_MOVIL = 1280;
+function medidasDeSalida(clip) {
+  let w = clip.w, h = clip.h;
+  const tope = state.exportLado;
+  const largo = Math.max(w, h);
+  if (tope && largo > tope) {
+    const k = tope / largo;
+    // pares: H.264 no acepta dimensiones impares
+    w = Math.max(2, Math.round(w * k / 2) * 2);
+    h = Math.max(2, Math.round(h * k / 2) * 2);
+  }
+  return { w, h, escalado: w !== clip.w || h !== clip.h };
+}
 
 async function exportVideoLive(clip, report) {
-  // resolución de trabajo: se topa para que el teléfono no se ahogue
-  let W = clip.w, H = clip.h;
-  const ladoLargo = Math.max(W, H);
-  if (ladoLargo > LADO_MAX_MOVIL) {
-    const k = LADO_MAX_MOVIL / ladoLargo;
-    // pares: H.264 no acepta dimensiones impares
-    W = Math.max(2, Math.round(W * k / 2) * 2);
-    H = Math.max(2, Math.round(H * k / 2) * 2);
-  }
+  const { w: W, h: H } = medidasDeSalida(clip);
   const v = clip.media;
   const dur = clip.dur;
 
@@ -2466,9 +2501,27 @@ async function exportVideoLive(clip, report) {
     if (navigator.wakeLock) wake = await navigator.wakeLock.request('screen');
   } catch (e) { /* si no se puede, seguimos */ }
 
+  // ---- precalentamiento ----
+  // Medido en el archivo de un iPhone: los primeros 3,5 segundos salían a ~7
+  // cuadros por segundo y después el video levantaba solo a ~29. Es el
+  // decodificador arrancando, el lienzo estrenándose y el código
+  // compilándose, todo mientras ya se estaba grabando. Así que primero se
+  // reproduce un momento en vano, y recién con todo caliente se graba.
+  await seekTo(v, 0);
+  for (let i = 0; i < 5; i++) pintarUno();   // compila el pintado
+  try {
+    await v.play();
+    const finCalentado = performance.now() + 600;
+    while (performance.now() < finCalentado) {
+      pintarUno();
+      await new Promise(r => requestAnimationFrame(r));
+    }
+    v.pause();
+  } catch (e) { /* si no dejó reproducir acá, se reintenta abajo */ }
   await seekTo(v, 0);
   pintarUno();          // primer cuadro para que el archivo no empiece en negro
   rafId = requestAnimationFrame(bucle);
+  cuadros = 0;          // lo de recién no cuenta: todavía no se grababa
 
   const abortar = async (msg) => {
     dibujando = false;
@@ -2540,9 +2593,13 @@ async function exportVideoLive(clip, report) {
 
   // se pinta al ritmo de la pantalla (~60/s) para alimentar sobrado la captura
   // de 30; por debajo de 18 el resultado ya se nota entrecortado
+  // Se guarda para poder mostrarlo: si el video sale trabado, este número dice
+  // si fue el teléfono que no alcanzó a dibujar o si el problema es otro.
   const fps = dur ? cuadros / dur : 60;
-  if (fps < 18) {
-    toast('El video quedó entrecortado porque el teléfono no alcanzó a dibujarlo. Mantené la pantalla encendida y esta pestaña al frente, cerrá otras apps y volvé a exportar.', true);
+  // el archivo se graba a 30 como mucho; se informa lo que realmente quedó
+  ultimoFpsExport = Math.min(30, Math.round(fps));
+  if (fps < 20) {
+    toast(`El teléfono solo alcanzó ${Math.round(fps)} cuadros por segundo, por eso puede verse trabado. Probá bajando la calidad a "Suave" en la pestaña Audio, con la pantalla encendida y otras apps cerradas.`, true);
   }
 
   if (avisoSinAudio) toast('No se pudo copiar el audio de ese archivo; el video quedó sin sonido.', true);

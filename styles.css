@@ -227,11 +227,11 @@ input[type=text].cue-time{
 }
 .cue-pos span em{font-family:'JetBrains Mono',monospace;font-style:normal;color:var(--ink-faint)}
 .cue-pos input[type=range]{flex:1;min-width:0}
-.cue-posreset,.cue-pick{
+.cue-posreset,.cue-pick,.cue-sizereset{
   flex:none;border:0;background:none;color:var(--ink-faint);
   font-size:16px;width:30px;height:30px;line-height:1;cursor:pointer;border-radius:6px;
 }
-.cue-posreset:active,.cue-pick:active{color:var(--amber);background:rgba(255,180,92,.14)}
+.cue-posreset:active,.cue-pick:active,.cue-sizereset:active{color:var(--amber);background:rgba(255,180,92,.14)}
 
 /* ---------------- botones ---------------- */
 .btn{

@@ -1,7 +1,7 @@
 // Streams a remote video/audio file back through our own domain with a
 // Content-Disposition: attachment header, so mobile Safari saves it into
 // its Downloads panel instead of just opening the file in the video player.
-const ALLOWED_HOST_RE = /(^|\.)(tikwm\.com|tiktokcdn[a-z0-9.-]*\.com|tiktokcdn-[a-z0-9.-]*\.com|tiktokv\.com|muscdn\.com|byteoversea\.com|bytedance\.com)$/i;
+const ALLOWED_HOST_RE = /(^|\.)(tikwm\.com|tiktokcdn[a-z0-9.-]*\.com|tiktokcdn-[a-z0-9.-]*\.com|tiktokv\.com|muscdn\.com|byteoversea\.com|bytedance\.com|cdninstagram\.com|fbcdn\.net|instagram\.com)$/i;
 
 function sanitizeFilename(name) {
   return (name || 'tiktok.mp4').replace(/[^a-zA-Z0-9_\-.]/g, '_').slice(0, 150);

@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,400;0,600;0,700;0,800;0,900;1,700&family=Poppins:wght@400;600;800&family=Inter:wght@400;600;800&family=Bebas+Neue&family=Anton&family=Archivo+Black&family=Oswald:wght@500;700&family=Nunito:wght@700;900&family=Playfair+Display:wght@700;900&family=Permanent+Marker&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="./styles.css?v=25">
+<link rel="stylesheet" href="./styles.css?v=27">
 </head>
 <body data-tab="lote">
 
@@ -46,10 +46,10 @@
     </div>
 
     <form class="urlbox" id="urlForm">
-      <input type="url" id="urlInput" placeholder="Pegá un enlace de TikTok…" inputmode="url" autocomplete="off">
+      <input type="url" id="urlInput" placeholder="Pegá un enlace de TikTok o Instagram…" inputmode="url" autocomplete="off">
       <button class="btn btn-primary" id="urlSubmit" type="submit">Importar</button>
     </form>
-    <p class="hint hint-url">Trae el video sin marca de agua directo a tu lote, sin salir de acá.</p>
+    <p class="hint hint-url">Trae el video directo a tu lote, sin salir de acá. TikTok viene sin marca de agua. De Instagram funcionan los posts y reels públicos; si alguno no se deja, guardalo en el teléfono y subilo con el botón de abajo.</p>
 
     <label class="dropzone" id="dropzone">
       <input class="filein" type="file" id="fileInput" accept="video/*,image/*" multiple>
@@ -299,6 +299,17 @@
 
     <div class="panel panel-render">
       <div class="pane-head"><h3>Exportar</h3></div>
+
+      <label class="field">
+        <span>Calidad del video</span>
+        <select id="exportQuality">
+          <option value="960">Suave — la más fluida</option>
+          <option value="1280" selected>Normal — recomendada</option>
+          <option value="0">Máxima — igual al original</option>
+        </select>
+      </label>
+      <p class="hint">Si el video te sale trabado, bajá a <strong>Suave</strong>: el teléfono tiene que dibujar y comprimir cada cuadro, y a menos tamaño le sobra tiempo. Para TikTok o Reels no se nota, porque los reencodifican igual.</p>
+
       <label class="switch">
         <input type="checkbox" id="zipAll" checked>
         <span>Descargar todo junto en un ZIP</span>
@@ -346,6 +357,6 @@
 <script src="https://unpkg.com/@ffmpeg/util@0.12.1/dist/umd/index.js"></script>
 <script src="https://unpkg.com/jszip@3.10.1/dist/jszip.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.1.1/dist/tesseract.min.js"></script>
-<script src="./app.js?v=26"></script>
+<script src="./app.js?v=27"></script>
 </body>
 </html>

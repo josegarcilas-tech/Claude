@@ -23,11 +23,12 @@ Cuando termina, revisá el resultado. Si algo quedó torcido —una palabra mal 
 - **Traduce al español.** Manda las líneas a la API de Claude y las devuelve en español latino, lista la pestaña **Texto** para retocarlas a mano.
 - **Tapa el subtítulo original** sin tocar el resto del cuadro: solo difumina la silueta de las letras (o, si preferís, toda la franja).
 - **Edición por línea de tiempo.** Cada línea de texto tiene su "desde" y "hasta" en segundos; se puede ajustar, agregar o borrar, y la vista previa salta a ese momento con un toque.
-- **Cada línea se mueve donde quieras.** Arrastrá el subtítulo con el dedo (o el mouse) sobre la vista previa para llevarlo justo encima del original y taparlo. También hay deslizadores de posición arriba/abajo e izquierda/derecha por si querés precisión, y un botón para devolver la línea al centro.
+- **Cada línea se mueve y se agranda por separado.** Arrastrá el subtítulo con el dedo (o el mouse) sobre la vista previa para llevarlo justo encima del original y taparlo. Cada línea tiene además sus deslizadores de arriba/abajo, izquierda/derecha y **tamaño propio**, con botones para volver a los valores generales.
 - **Vista previa que anda sola.** Botón de reproducir/pausar debajo del video: se ve el resultado en movimiento sin tener que arrastrar la barra a mano. Se pausa solo al terminar, al agarrar un subtítulo para moverlo, al mover la barra o al empezar a exportar.
 - **Marca de agua con tu logo.** Subís una imagen (PNG con fondo transparente da el mejor resultado), elegís la esquina, el tamaño y la **intensidad** (opacidad) con la que se ve, y queda pegada en todo el lote.
-- **Importar desde TikTok.** Pegás el enlace del video y se descarga directo a tu lote, sin marca de agua de TikTok, listo para traducir.
+- **Importar desde TikTok e Instagram.** Pegás el enlace y se descarga directo a tu lote, listo para traducir. TikTok viene sin marca de agua; de Instagram funcionan los posts y reels públicos.
 - **Descarga del video terminado.** Un archivo o el lote completo en un ZIP; en iPhone se abre el menú de compartir para guardarlo en Fotos o Archivos.
+- **Calidad regulable.** Si el video sale trabado, bajá la calidad a *Suave* en la pestaña Audio: el teléfono tiene que dibujar y comprimir cada cuadro, y a menos tamaño le sobra tiempo. Al terminar la app te dice cuántos cuadros por segundo logró.
 - **Voz doblada (opcional).** Le pegás el audio que generaste en ElevenLabs u otra herramienta, y elegís si se reemplaza el audio original o se mezcla con él.
 
 ---
@@ -54,9 +55,9 @@ Cuando termina, revisá el resultado. Si algo quedó torcido —una palabra mal 
 
 Sin la llave, el resto de la app funciona igual: escribís el texto en español a mano en la pestaña Texto y exportás igual.
 
-### Importar por enlace de TikTok
+### Importar por enlace de TikTok o Instagram
 
-No necesita ninguna llave: usa un servicio externo (tikwm.com) para resolver el enlace directo del video, y una Edge Function propia (`/dl`) que hace de proxy para poder descargarlo desde el navegador. Si Netlify no publicó la función, subí la carpeta por GitHub en vez de arrastrar el ZIP.
+No necesita ninguna llave. TikTok pasa por un servicio externo (tikwm.com) que devuelve el video sin marca de agua. Instagram no tiene un equivalente sin llave, así que se lee la página pública del post: funciona con posts y reels públicos, pero Instagram bloquea seguido las descargas automáticas — si pasa, la app te lo dice y podés guardar el video en el teléfono y subirlo a mano. En ambos casos una Edge Function propia (`/dl`) hace de proxy para poder traer el archivo al navegador. Si Netlify no publicó la función, subí la carpeta por GitHub en vez de arrastrar el ZIP.
 
 ---
 
@@ -81,7 +82,7 @@ styles.css                            estilos
 app.js                                lote, subtítulos, OCR, marca de agua, audio y render
 netlify.toml                          configuración de despliegue
 netlify/functions/translate.mjs       traducción con la API de Claude
-netlify/functions/resolve.js          resuelve el enlace directo de un video de TikTok
+netlify/functions/resolve.js          resuelve el enlace directo de un video de TikTok o Instagram
 netlify/edge-functions/download.js    proxy de descarga (para poder importarlo al navegador)
 ```
 
@@ -89,6 +90,7 @@ netlify/edge-functions/download.js    proxy de descarga (para poder importarlo a
 
 - **Videos cortos.** El motor corre en el navegador, así que clips de TikTok (10–60 s) van bien. Un video de varios minutos puede tardar mucho o quedarse sin memoria.
 - **Para lotes grandes, computador.** En el celular la interfaz funciona completa, pero la memoria para procesar video es limitada.
+- **Si el video sale trabado.** En el celular el video se arma grabando la pantalla en tiempo real, así que depende de lo rápido que sea el teléfono. Bajá la calidad a *Suave*, dejá la pantalla encendida y esta pestaña al frente, y cerrá otras apps. El número de cuadros por segundo que aparece al terminar te dice si el teléfono llegó o no.
 - **La detección automática acierta casi siempre, pero no siempre.** Mirá el resultado antes de publicar.
 - **La importación por enlace depende de un servicio de terceros no oficial.** Si TikTok cambia su plataforma, puede dejar de funcionar temporalmente. Usala solo con contenido que tengas derecho a descargar.
 - **Nada sale de tu computador**, salvo las líneas de texto al traducir y el enlace al importar de TikTok.
