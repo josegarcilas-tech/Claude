@@ -2168,7 +2168,9 @@ async function exportVideoLive(clip, report) {
   // no lo componen y la grabación sale con saltos
   cv.style.cssText = 'position:fixed;left:0;top:0;width:2px;height:4px;opacity:.01;pointer-events:none;z-index:-1';
   document.body.appendChild(cv);
-  const cx = cv.getContext('2d');
+  // sin canal alfa: el cuadro del video tapa todo el lienzo igual, y así el
+  // navegador compone y codifica bastante más rápido
+  const cx = cv.getContext('2d', { alpha: false });
 
   const mime = recorderMime();
   if (!mime) throw new Error('Este navegador no puede grabar video.');
@@ -2262,25 +2264,60 @@ async function exportVideoLive(clip, report) {
 
   let dibujando = true;
   let cuadros = 0;
-  let tempo = null;
+  let rafId = null;
   let wake = null;
+
+  // Cada línea y el logo se dibujan UNA sola vez a su propia imagen. Durante la
+  // grabación solo se pegan, ya listos. Antes se medía, se partía en renglones y
+  // se trazaba el texto en cada cuadro: ese trabajo repetido era lo que hacía
+  // que al reproductor le faltaran cuadros y el video se viera con tirones.
+  const capasTexto = [];
+  for (const cue of clip.cues) {
+    if (!cue.text.trim()) continue;
+    const ov = cueOverlay(clip, cue);
+    if (!ov) continue;
+    // mismo criterio que el motor de escritorio: sin "hasta" válido, hasta el final
+    capasTexto.push({
+      start: Math.max(0, cue.start),
+      end: Math.min(dur, cue.end > cue.start ? cue.end : dur),
+      canvas: ov.canvas, x: ov.x, y: ov.y
+    });
+  }
+
+  let capaLogo = null;
+  if (state.logo.on && state.logo.img && state.logo.img.naturalWidth) {
+    const caja = logoBox(W, H);
+    if (caja) {
+      const lc = document.createElement('canvas');
+      lc.width = caja.w; lc.height = caja.h;
+      const lcx = lc.getContext('2d');
+      lcx.globalAlpha = Math.max(0, Math.min(1, state.logo.opacity / 100));
+      lcx.drawImage(state.logo.img, 0, 0, caja.w, caja.h);
+      capaLogo = { canvas: lc, x: caja.x, y: caja.y };
+    }
+  }
 
   const pintarUno = () => {
     try {
       const t = v.currentTime;
       cx.drawImage(v, 0, 0, W, H);
       drawCover(cx, v, W, H, clip, t);
-      cuesEn(clip, t).forEach(c => drawSubtitle(cx, c.text, W, H, c.y, c.x));
-      drawLogo(cx, W, H);
+      for (const capa of capasTexto) {
+        if (t >= capa.start && t <= capa.end) cx.drawImage(capa.canvas, capa.x, capa.y);
+      }
+      if (capaLogo) cx.drawImage(capaLogo.canvas, capaLogo.x, capaLogo.y);
       cuadros++;
     } catch (e) { /* un cuadro perdido no rompe nada */ }
   };
 
-  const usaRVFC = typeof v.requestVideoFrameCallback === 'function';
+  // Un solo motor de dibujo, atado al refresco de la pantalla. Antes convivían
+  // un setInterval(33) y requestVideoFrameCallback: pintaban el doble y a
+  // destiempo, y como la captura va a 30 fijos, unas veces tomaba el cuadro
+  // repetido y otras se lo perdía. De ahí el tironeo.
   const bucle = () => {
     if (!dibujando) return;
     pintarUno();
-    v.requestVideoFrameCallback(bucle);
+    rafId = requestAnimationFrame(bucle);
   };
 
   try {
@@ -2289,14 +2326,11 @@ async function exportVideoLive(clip, report) {
 
   await seekTo(v, 0);
   pintarUno();          // primer cuadro para que el archivo no empiece en negro
-  rec.start(250);
-  // el temporizador asegura un ritmo parejo; rVFC agrega los cuadros exactos del video
-  tempo = setInterval(() => { if (dibujando) pintarUno(); }, 33);
-  if (usaRVFC) v.requestVideoFrameCallback(bucle);
+  rafId = requestAnimationFrame(bucle);
 
   const abortar = async (msg) => {
     dibujando = false;
-    if (tempo) clearInterval(tempo);
+    if (rafId) cancelAnimationFrame(rafId);
     try { v.pause(); } catch (e) { /* ya detenido */ }
     try { rec.stop(); } catch (e) { /* ya detenido */ }
     await Promise.race([grabado, new Promise(r => setTimeout(r, 3000))]);
@@ -2310,6 +2344,13 @@ async function exportVideoLive(clip, report) {
   } catch (e) {
     await abortar('Safari no dejó reproducir el video. Tocá "Traducir y descargar" otra vez sin cambiar de app.');
   }
+
+  // Se graba recién cuando el video ya está rodando. Si se arrancaba antes,
+  // el principio quedaba congelado esperando a que Safari largara la
+  // reproducción, y el audio entraba corrido respecto a la imagen.
+  // Sin trocear: cada volcado de datos frenaba un instante al grabador y ahí
+  // se perdía un cuadro. Al parar se entrega todo junto igual.
+  rec.start();
 
   if (ac) {
     const t0 = ac.currentTime + 0.03;
@@ -2343,7 +2384,7 @@ async function exportVideoLive(clip, report) {
 
   await new Promise(r => setTimeout(r, 400));   // el último trozo
   dibujando = false;
-  if (tempo) clearInterval(tempo);
+  if (rafId) cancelAnimationFrame(rafId);
   try { v.pause(); } catch (e) { /* ya estaba detenido */ }
   if (voiceSrc) { try { voiceSrc.stop(); } catch (e) { /* ya terminó */ } }
   if (musicSrc) { try { musicSrc.stop(); } catch (e) { /* ya terminó */ } }
@@ -2353,9 +2394,11 @@ async function exportVideoLive(clip, report) {
   cv.remove();
   clip._srcNode = null;
 
-  const fps = dur ? cuadros / dur : 30;
-  if (fps < 8) {
-    toast('El video quedó con pocos cuadros por segundo. Mantené la pantalla encendida y esta pestaña al frente mientras exporta.', true);
+  // se pinta al ritmo de la pantalla (~60/s) para alimentar sobrado la captura
+  // de 30; por debajo de 18 el resultado ya se nota entrecortado
+  const fps = dur ? cuadros / dur : 60;
+  if (fps < 18) {
+    toast('El video quedó entrecortado porque el teléfono no alcanzó a dibujarlo. Mantené la pantalla encendida y esta pestaña al frente, cerrá otras apps y volvé a exportar.', true);
   }
 
   if (avisoSinAudio) toast('No se pudo copiar el audio de ese archivo; el video quedó sin sonido.', true);
