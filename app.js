@@ -338,11 +338,25 @@ urlForm.addEventListener('submit', async e => {
     const idSafe = (data.id || Date.now()).toString().replace(/[^\w-]/g, '');
     const filename = `${data.fuente === 'instagram' ? 'instagram' : 'tiktok'}_${idSafe}.mp4`;
     const dlRes = await fetch(proxiedDownload(videoUrl, filename));
-    if (!dlRes.ok) throw new Error('No se pudo descargar el archivo del video.');
+    if (!dlRes.ok) {
+      // el enlace se encontró pero el archivo no vino: conviene distinguirlo
+      let detalle = '';
+      try { detalle = (await dlRes.text()).slice(0, 160); } catch { /* sin cuerpo */ }
+      throw new Error(detalle || `No se pudo traer el archivo del video (${dlRes.status}).`);
+    }
     const blob = await dlRes.blob();
+    if (!blob.size) throw new Error('El archivo del video llegó vacío. Probá de nuevo en unos segundos.');
     const file = new File([blob], filename, { type: blob.type || 'video/mp4' });
 
+    // se comprueba que de verdad haya entrado al lote: el archivo puede venir
+    // bien y aun así el navegador no poder abrirlo, y decir "listo" sin que
+    // haya nada cargado es peor que avisar el problema
+    const antes = state.clips.length;
     await addFiles([file]);
+    if (state.clips.length === antes) {
+      throw new Error('El video se descargó pero el navegador no pudo abrirlo. Guardalo en tu teléfono y subilo con "Elegí tus videos".');
+    }
+
     urlInput.value = '';
     toast('Video importado. Ya está en tu lote.');
   } catch (err) {

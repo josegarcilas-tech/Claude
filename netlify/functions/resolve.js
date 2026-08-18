@@ -187,59 +187,149 @@ async function pedirTexto(url, extra) {
   return { ok: true, status: res.status, texto: await res.text() };
 }
 
+/**
+ * Los códigos de los enlaces (el "DxAbC_1" de /reel/DxAbC_1/) son el número
+ * interno del post escrito en base 64 con este alfabeto. Convertirlo permite
+ * preguntar por el post directamente, que es lo que mejor funciona.
+ */
+const ALFABETO_IG = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+
+function idDeMedioInstagram(code) {
+  let id = 0n;
+  for (const ch of code) {
+    const i = ALFABETO_IG.indexOf(ch);
+    if (i < 0) return null;
+    id = id * 64n + BigInt(i);
+  }
+  return id > 0n ? id.toString() : null;
+}
+
+/** Saca el video de la respuesta del endpoint de medios. */
+function videoDeJsonInstagram(json) {
+  const item = json && Array.isArray(json.items) && json.items[0];
+  if (!item) return null;
+
+  const deUno = (m) => {
+    const vs = m && m.video_versions;
+    if (!Array.isArray(vs) || !vs.length) return null;
+    // el primero suele ser el de mayor calidad; por las dudas, el más ancho
+    const mejor = vs.slice().sort((a, b) => (b.width || 0) - (a.width || 0))[0];
+    return mejor && mejor.url ? mejor.url : null;
+  };
+
+  let url = deUno(item);
+  if (!url && Array.isArray(item.carousel_media)) {
+    for (const m of item.carousel_media) {
+      url = deUno(m);
+      if (url) break;
+    }
+  }
+  if (!url) return null;
+
+  const cand = item.image_versions2 && item.image_versions2.candidates;
+  return {
+    url,
+    portada: Array.isArray(cand) && cand.length ? cand[0].url : null,
+    usuario: (item.user && item.user.username) || '',
+    titulo: (item.caption && item.caption.text) || '',
+    duracion: item.video_duration || null,
+  };
+}
+
+async function pedirJson(url, extra) {
+  const res = await conTiempoLimite(
+    (signal) => fetch(url, {
+      signal,
+      redirect: 'follow',
+      headers: {
+        'User-Agent': UA_NAVEGADOR,
+        'Accept': '*/*',
+        'Accept-Language': 'es-ES,es;q=0.9,en;q=0.8',
+        ...(extra || {}),
+      },
+    }),
+    9000
+  );
+  if (!res.ok) return { ok: false, status: res.status, json: null };
+  try { return { ok: true, status: res.status, json: await res.json() }; }
+  catch { return { ok: false, status: res.status, json: null }; }
+}
+
 async function fetchDeInstagram(postUrl) {
   const code = codigoDeInstagram(postUrl);
   if (!code) throw new Error('No se reconoce el enlace de Instagram. Copiá el enlace del post o del reel.');
 
   const limpio = `https://www.instagram.com/p/${code}/`;
-  // varias puertas: la de "incrustar" suele ser la que menos se cierra
-  const intentos = [
-    `https://www.instagram.com/p/${code}/embed/captioned/`,
-    `https://www.instagram.com/reel/${code}/embed/captioned/`,
-    limpio,
-    `${limpio}?__a=1&__d=dis`,
-  ];
-
-  let ultimoEstado = 0;
+  const mediaId = idDeMedioInstagram(code);
+  const diag = [];   // queda en el mensaje de error: sin esto no hay forma de saber qué falló
   let portada = null;
+  let esFoto = false;
 
-  for (const intento of intentos) {
-    let r;
-    try { r = await pedirTexto(intento); }
-    catch (err) {
-      if (err.name === 'AbortError') continue;
-      continue;
+  const armar = (url, extra) => ({
+    id: code,
+    fuente: 'instagram',
+    title: (extra && extra.titulo) || '',
+    author: { username: (extra && extra.usuario) || '', nickname: '', avatar: null },
+    cover: (extra && extra.portada) || portada,
+    duration: (extra && extra.duracion) || null,
+    music: null,
+    stats: {},
+    downloads: { noWatermark: url, watermark: null, audio: null },
+  });
+
+  // 1) el endpoint de medios: es el que mejor anda sin sesión iniciada
+  if (mediaId) {
+    const cabeceras = {
+      'x-ig-app-id': '936619743392459',
+      'Referer': limpio,
+      'Origin': 'https://www.instagram.com',
+    };
+    for (const host of ['https://www.instagram.com', 'https://i.instagram.com']) {
+      const via = `${host}/api/v1/media/${mediaId}/info/`;
+      let r;
+      try { r = await pedirJson(via, cabeceras); }
+      catch (err) { diag.push(`api:${err.name === 'AbortError' ? 'lento' : 'error'}`); continue; }
+      if (!r.ok) { diag.push(`api:${r.status}`); continue; }
+
+      const dato = videoDeJsonInstagram(r.json);
+      if (dato) return armar(dato.url, dato);
+
+      const item = r.json && Array.isArray(r.json.items) && r.json.items[0];
+      if (item && !item.video_versions && !item.carousel_media) esFoto = true;
+      diag.push('api:sin-video');
     }
-    if (!r.ok) { ultimoEstado = r.status; continue; }
+  }
+
+  // 2) leer la página pública, por si el endpoint estuviera cerrado
+  const paginas = [
+    `https://www.instagram.com/reel/${code}/embed/captioned/`,
+    `https://www.instagram.com/p/${code}/embed/captioned/`,
+    limpio,
+  ];
+  for (const via of paginas) {
+    let r;
+    try { r = await pedirTexto(via); }
+    catch (err) { diag.push(`web:${err.name === 'AbortError' ? 'lento' : 'error'}`); continue; }
+    if (!r.ok) { diag.push(`web:${r.status}`); continue; }
 
     if (!portada) portada = buscarPortadaEnHtml(r.texto);
     const video = buscarVideoEnHtml(r.texto);
-    if (video) {
-      return {
-        id: code,
-        fuente: 'instagram',
-        title: '',
-        author: { username: '', nickname: '', avatar: null },
-        cover: portada,
-        duration: null,
-        music: null,
-        stats: {},
-        downloads: { noWatermark: video, watermark: null, audio: null },
-      };
-    }
-    // hay página pero sin video: puede ser una foto
-    if (/og:image/i.test(r.texto) && !/og:video/i.test(r.texto)) {
-      throw new Error('Ese post de Instagram es una foto, no un video.');
-    }
+    if (video) return armar(video, null);
+
+    if (/og:image/i.test(r.texto) && !/og:video/i.test(r.texto)) esFoto = true;
+    diag.push('web:sin-video');
   }
 
-  if (ultimoEstado === 401 || ultimoEstado === 403) {
-    throw new Error('Instagram no dejó abrir ese post desde el servidor. Suele pasar con cuentas privadas o cuando pide inicio de sesión. Descargá el video a tu teléfono y subilo con "Elegí tus videos".');
+  if (esFoto) throw new Error('Ese post de Instagram es una foto, no un video.');
+
+  const detalle = diag.length ? ` (${diag.join(', ')})` : '';
+  if (diag.some(d => d.endsWith(':404'))) {
+    throw new Error('Ese post de Instagram no existe o fue borrado.' + detalle);
   }
-  if (ultimoEstado === 404) {
-    throw new Error('Ese post de Instagram no existe o fue borrado.');
+  if (diag.some(d => d.endsWith(':401') || d.endsWith(':403'))) {
+    throw new Error('Instagram pidió iniciar sesión para ver ese post, así que no se puede traer desde acá. Suele pasar con cuentas privadas y con los bloqueos que Instagram le pone a los servidores. Guardá el video en tu teléfono y subilo con "Elegí tus videos".' + detalle);
   }
-  throw new Error('Instagram no entregó el video (suele bloquear las descargas automáticas). Guardá el video en tu teléfono y subilo con "Elegí tus videos o imágenes".');
+  throw new Error('Instagram no entregó el video; bloquea bastante las descargas automáticas. Guardá el video en tu teléfono y subilo con "Elegí tus videos o imágenes".' + detalle);
 }
 
 /* ---------------- handler ---------------- */
