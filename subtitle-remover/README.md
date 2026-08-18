@@ -1,4 +1,7 @@
-# Limpiador de subtítulos
+# Estudio de video
+
+Tres pestañas: traer un video de TikTok, limpiarlo, y revisar el resultado en una línea
+de tiempo.
 
 Quita lo que se añadió en edición sobre tus videos —subtítulos quemados, recuadros de
 comentario, stickers, etiquetas, marcas de agua— reconstruyendo el fondo, y escribe
@@ -30,6 +33,41 @@ unos pocos fotogramas sueltos a Claude para que ubique el texto y lo traduzca.
 
 La clave queda solo en el servidor de Netlify. El navegador nunca la ve: llama a
 `/api/analyze`, y esa función es la que habla con la API de Claude.
+
+---
+
+## Las tres pestañas
+
+### 1 · Descargar
+
+Pegas el enlace de TikTok y lo trae sin marca de agua. Además del botón de descarga
+está **«Mandar al limpiador»**, que carga el video directamente en la pestaña 2 sin
+bajarlo y volver a subirlo.
+
+Eso funciona gracias a la edge function `/dl`, que sirve el archivo desde tu propio
+dominio. Cumple dos papeles:
+
+- manda `Content-Disposition: attachment`, y así Safari en móvil lo guarda en Descargas
+  en vez de limitarse a abrirlo en el reproductor;
+- al ser del mismo origen, el navegador **sí puede leer los bytes** con `fetch` — desde
+  el CDN de TikTok, CORS lo impediría.
+
+Solo acepta enlaces de TikTok. Si tu video viene de otro sitio, pasa a la pestaña 2 y
+suéltalo ahí.
+
+### 2 · Limpiar
+
+Es el limpiador: detecta lo sobrepuesto, lo borra y opcionalmente escribe la traducción.
+
+### 3 · Línea de tiempo
+
+Para comprobar cómo quedó. Tiene el video con un interruptor **Limpio / Original** que
+mantiene el instante al cambiar —la forma rápida de ver qué se quitó—, una tira de
+miniaturas, y un bloque por cada elemento borrado colocado en su tramo real: naranja los
+subtítulos, azul los recuadros. Tocas un bloque y salta a ese punto.
+
+Las miniaturas son un extra: si el navegador no las puede sacar, se dibuja una tira lisa
+y los bloques siguen ahí.
 
 ---
 
@@ -186,8 +224,10 @@ reconstruida y se respeta la composición del video.
 ## Estructura
 
 ```
-netlify.toml                    publish=public, redirect /api/analyze
+netlify.toml                    publish=public, redirect /api/*
 netlify/functions/analyze.mjs   llama a Claude (sin dependencias npm)
+netlify/functions/resolve.js    resuelve el enlace de TikTok
+netlify/edge-functions/         /dl — sirve el archivo desde nuestro dominio
 public/
   index.html
   css/app.css
@@ -197,7 +237,10 @@ public/
   js/zip.js                     empaquetado ZIP (store) para descargarlo todo
   js/video.js                   demux, decode, encode, mux
   js/pipeline.js                las tres pasadas
-  js/app.js                     interfaz
+  js/app.js                     interfaz del limpiador
+  js/downloader.js              pestaña 1
+  js/timeline.js                pestaña 3
+  js/tabs.js                    cambio de pestaña
   vendor/mp4box.all.min.js      demux MP4
   vendor/mp4-muxer.js           mux MP4
 ```

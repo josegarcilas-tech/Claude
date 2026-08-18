@@ -1,15 +1,16 @@
-# Sitio estatico + una funcion serverless. No hace falta paso de build.
+# Sitio estatico + funciones serverless. No hace falta paso de build.
 [build]
   publish = "public"
   functions = "netlify/functions"
+  edge_functions = "netlify/edge-functions"
 
 [functions]
   node_bundler = "esbuild"
 
-# URL corta para la funcion de analisis.
+# URLs cortas para las funciones: /api/analyze y /api/resolve.
 [[redirects]]
-  from = "/api/analyze"
-  to = "/.netlify/functions/analyze"
+  from = "/api/*"
+  to = "/.netlify/functions/:splat"
   status = 200
 
 [[headers]]

@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Limpiador de subtítulos</title>
-<meta name="description" content="Quita los subtítulos incrustados de tus videos y los reemplaza por subtítulos traducidos.">
+<title>Estudio de video</title>
+<meta name="description" content="Descarga videos de TikTok, quítales los subtítulos y revisa el resultado en una línea de tiempo.">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎬</text></svg>">
 <link rel="stylesheet" href="/css/app.css">
 </head>
@@ -12,145 +12,216 @@
 
 <header class="top">
   <div class="wrap">
-    <h1>Limpiador de subtítulos</h1>
-    <p class="lede">Borra lo que se añadió en edición —subtítulos, recuadros de comentario, stickers— reconstruyendo el fondo, y escribe encima los subtítulos traducidos. Puedes cargar varios videos a la vez.</p>
+    <h1>Estudio de video</h1>
+    <p class="lede">Descarga el video, quítale los subtítulos y lo que se le haya puesto encima, y revisa el resultado en la línea de tiempo.</p>
   </div>
 </header>
+
+<nav class="tabs wrap" role="tablist">
+  <button class="tab active" data-tab="download" role="tab" aria-selected="true">
+    <span class="tab-num">1</span> Descargar
+  </button>
+  <button class="tab" data-tab="clean" role="tab" aria-selected="false">
+    <span class="tab-num">2</span> Limpiar
+  </button>
+  <button class="tab" data-tab="timeline" role="tab" aria-selected="false">
+    <span class="tab-num">3</span> Línea de tiempo
+  </button>
+</nav>
 
 <main class="wrap">
 
   <!-- Aviso de plataforma. Va arriba del todo: al final de la pagina nadie lo lee. -->
   <div id="unsupported" class="warning hidden"></div>
 
-  <!-- ---------------------------------------------------------------- paso 1 -->
-  <section class="step" id="step-file">
-    <div class="step-head"><span class="num">1</span><h2>Elige los videos</h2></div>
+  <!-- ============================================================ pestana 1 -->
+  <div class="panel" id="tab-download">
 
-    <div id="drop" class="drop" tabindex="0" role="button" aria-label="Seleccionar videos">
-      <input type="file" id="file" accept="video/mp4,video/quicktime,video/*" multiple hidden>
-      <div class="drop-inner">
-        <div class="drop-icon">🎬</div>
-        <p class="drop-main">Arrastra tus MP4 aquí o haz clic para elegirlos</p>
-        <p class="drop-sub">Puedes soltar varios de una vez. Se procesan en tu navegador, no se suben a ningún servidor.</p>
+    <section class="step">
+      <div class="step-head"><span class="num">↓</span><h2>Traer un video de TikTok</h2></div>
+
+      <form id="dl-form" class="controls" autocomplete="off">
+        <label class="field">
+          <span>Enlace del video</span>
+          <input type="text" id="dl-url" placeholder="https://www.tiktok.com/@usuario/video/..." inputmode="url">
+        </label>
+        <button type="submit" id="dl-go" class="primary">Buscar</button>
+      </form>
+
+      <p class="hint">
+        Pega el enlace y lo trae sin marca de agua. Puedes mandarlo directo al limpiador
+        sin descargarlo y volver a subirlo.
+      </p>
+
+      <div id="dl-status" class="status hidden"></div>
+
+      <div id="dl-result" class="dl-result hidden">
+        <img id="dl-cover" class="dl-cover" alt="">
+        <div class="dl-info">
+          <div id="dl-title" class="dl-title"></div>
+          <div id="dl-author" class="dl-author"></div>
+          <ul id="dl-stats" class="dl-stats"></ul>
+          <div class="dl-actions">
+            <button id="dl-to-cleaner" class="primary">Mandar al limpiador</button>
+            <a id="dl-nowm" class="ghost" href="#" download>Descargar sin marca</a>
+            <a id="dl-wm" class="ghost" href="#" download>Con marca</a>
+            <a id="dl-audio" class="ghost" href="#" download>Solo audio</a>
+          </div>
+        </div>
       </div>
-    </div>
+    </section>
 
-    <div id="job-list" class="jobs"></div>
-    <div id="file-status" class="status hidden"></div>
-  </section>
+    <section class="step">
+      <div class="step-head"><span class="num">📁</span><h2>…o usa archivos que ya tengas</h2></div>
+      <p class="hint" style="margin-top:0">
+        Si el video no viene de TikTok, pasa a la pestaña <b>Limpiar</b> y suéltalo ahí.
+      </p>
+      <button class="ghost" data-goto="clean">Ir a Limpiar</button>
+    </section>
+  </div>
 
-  <!-- ---------------------------------------------------------------- paso 2 -->
-  <section class="step hidden" id="step-analyze">
-    <div class="step-head"><span class="num">2</span><h2>Detecta y traduce</h2></div>
+  <!-- ============================================================ pestana 2 -->
+  <div class="panel hidden" id="tab-clean">
 
-    <fieldset class="modes">
-      <legend>¿Qué quieres hacer?</legend>
-      <label class="mode">
-        <input type="radio" name="mode" value="translate" checked>
-        <span class="mode-body">
-          <b>Quitar los subtítulos y traducirlos</b>
-          <small>Borra el texto original y escribe la traducción en su lugar.</small>
-        </span>
-      </label>
-      <label class="mode">
-        <input type="radio" name="mode" value="remove">
-        <span class="mode-body">
-          <b>Solo quitar los subtítulos</b>
-          <small>Deja el video limpio, sin ningún texto encima.</small>
-        </span>
-      </label>
-    </fieldset>
+    <!-- ---------------------------------------------------------------- paso 1 -->
+    <section class="step" id="step-file">
+      <div class="step-head"><span class="num">1</span><h2>Elige los videos</h2></div>
 
-    <div class="controls">
-      <label class="field" id="lang-field">
-        <span>Idioma de destino</span>
-        <input type="text" id="lang" value="español" autocomplete="off">
-      </label>
-      <label class="field narrow">
-        <span>Fotogramas de análisis</span>
-        <select id="frame-count">
-          <option value="6">6 — más rápido</option>
-          <option value="8" selected>8 — recomendado</option>
-          <option value="12">12 — más preciso</option>
-        </select>
-      </label>
-      <button id="btn-analyze" class="primary">Analizar con Claude</button>
-    </div>
+      <div id="drop" class="drop" tabindex="0" role="button" aria-label="Seleccionar videos">
+        <input type="file" id="file" accept="video/mp4,video/quicktime,video/*" multiple hidden>
+        <div class="drop-inner">
+          <div class="drop-icon">🎬</div>
+          <p class="drop-main">Arrastra tus MP4 aquí o haz clic para elegirlos</p>
+          <p class="drop-sub">Puedes soltar varios de una vez. Se procesan en tu navegador, no se suben a ningún servidor.</p>
+        </div>
+      </div>
 
-    <p class="hint" id="analyze-hint">
-      Claude mira los fotogramas y ubica todo lo que se añadió en edición: subtítulos,
-      recuadros de comentario, stickers, etiquetas y marcas de agua. Los subtítulos se
-      traducen; los recuadros solo se borran. Después puedes corregir cualquier cosa.
-    </p>
+      <div id="job-list" class="jobs"></div>
+      <div id="file-status" class="status hidden"></div>
+    </section>
 
-    <div id="analyze-status" class="status hidden"></div>
-  </section>
+    <!-- ---------------------------------------------------------------- paso 2 -->
+    <section class="step hidden" id="step-analyze">
+      <div class="step-head"><span class="num">2</span><h2>Detecta y traduce</h2></div>
 
-  <!-- ---------------------------------------------------------------- paso 3 -->
-  <section class="step hidden" id="step-segments">
-    <div class="step-head"><span class="num">3</span><h2>Revisa los subtítulos</h2></div>
-    <div id="review"></div>
-  </section>
+      <fieldset class="modes">
+        <legend>¿Qué quieres hacer?</legend>
+        <label class="mode">
+          <input type="radio" name="mode" value="translate" checked>
+          <span class="mode-body">
+            <b>Quitar los subtítulos y traducirlos</b>
+            <small>Borra el texto original y escribe la traducción en su lugar.</small>
+          </span>
+        </label>
+        <label class="mode">
+          <input type="radio" name="mode" value="remove">
+          <span class="mode-body">
+            <b>Solo quitar los subtítulos</b>
+            <small>Deja el video limpio, sin ningún texto encima.</small>
+          </span>
+        </label>
+      </fieldset>
 
-  <!-- ---------------------------------------------------------------- paso 4 -->
-  <section class="step hidden" id="step-render">
-    <div class="step-head"><span class="num">4</span><h2>Procesa</h2></div>
-
-    <details class="advanced">
-      <summary>Ajustes avanzados</summary>
-      <div class="controls grid">
-        <label class="field narrow">
-          <span>Tamaño de letra</span>
-          <input type="number" id="opt-fontsize" min="10" max="200" placeholder="auto">
+      <div class="controls">
+        <label class="field" id="lang-field">
+          <span>Idioma de destino</span>
+          <input type="text" id="lang" value="español" autocomplete="off">
         </label>
         <label class="field narrow">
-          <span>Margen vertical (px)</span>
-          <input type="number" id="opt-margin" min="0" max="2000" placeholder="auto">
-        </label>
-        <label class="field narrow">
-          <span>Cobertura de borrado</span>
-          <select id="opt-grow">
-            <option value="3">Ajustada</option>
-            <option value="4" selected>Normal</option>
-            <option value="6">Amplia</option>
+          <span>Fotogramas de análisis</span>
+          <select id="frame-count">
+            <option value="6">6 — más rápido</option>
+            <option value="8" selected>8 — recomendado</option>
+            <option value="12">12 — más preciso</option>
           </select>
         </label>
-        <label class="field narrow">
-          <span>Radio de reconstrucción</span>
-          <select id="opt-radius">
-            <option value="3">3 — detalle fino</option>
-            <option value="4" selected>4 — recomendado</option>
-            <option value="7">7 — más suave</option>
-          </select>
-        </label>
-        <label class="check">
-          <input type="checkbox" id="opt-emoji" checked>
-          <span>Borrar también los emojis del subtítulo</span>
-        </label>
+        <button id="btn-analyze" class="primary">Analizar con Claude</button>
       </div>
-    </details>
 
-    <button id="btn-render" class="primary big">Procesar todo</button>
+      <p class="hint" id="analyze-hint">
+        Claude mira los fotogramas y ubica todo lo que se añadió en edición: subtítulos,
+        recuadros de comentario, stickers, etiquetas y marcas de agua. Los subtítulos se
+        traducen; los recuadros solo se borran. Después puedes corregir cualquier cosa.
+      </p>
 
-    <div id="render-status" class="status hidden"></div>
-    <div class="progress hidden" id="progress"><div class="bar" id="progress-bar"></div></div>
-  </section>
+      <div id="analyze-status" class="status hidden"></div>
+    </section>
 
-  <!-- ---------------------------------------------------------------- salida -->
-  <section class="step hidden" id="step-result">
-    <div class="step-head"><span class="num">✓</span><h2>Listo</h2></div>
-    <div id="results" class="results"></div>
-    <div class="result-actions">
-      <button id="btn-zip" class="primary">Descargar todos (ZIP)</button>
-      <button id="btn-restart" class="ghost">Empezar de nuevo</button>
-    </div>
-    <div id="zip-status" class="status hidden"></div>
-  </section>
+    <!-- ---------------------------------------------------------------- paso 3 -->
+    <section class="step hidden" id="step-segments">
+      <div class="step-head"><span class="num">3</span><h2>Revisa lo detectado</h2></div>
+      <div id="review"></div>
+    </section>
+
+    <!-- ---------------------------------------------------------------- paso 4 -->
+    <section class="step hidden" id="step-render">
+      <div class="step-head"><span class="num">4</span><h2>Procesa</h2></div>
+
+      <details class="advanced">
+        <summary>Ajustes avanzados</summary>
+        <div class="controls grid">
+          <label class="field narrow">
+            <span>Tamaño de letra</span>
+            <input type="number" id="opt-fontsize" min="10" max="200" placeholder="auto">
+          </label>
+          <label class="field narrow">
+            <span>Margen vertical (px)</span>
+            <input type="number" id="opt-margin" min="0" max="2000" placeholder="auto">
+          </label>
+          <label class="field narrow">
+            <span>Cobertura de borrado</span>
+            <select id="opt-grow">
+              <option value="3">Ajustada</option>
+              <option value="4" selected>Normal</option>
+              <option value="6">Amplia</option>
+            </select>
+          </label>
+          <label class="field narrow">
+            <span>Radio de reconstrucción</span>
+            <select id="opt-radius">
+              <option value="3">3 — detalle fino</option>
+              <option value="4" selected>4 — recomendado</option>
+              <option value="7">7 — más suave</option>
+            </select>
+          </label>
+          <label class="check">
+            <input type="checkbox" id="opt-emoji" checked>
+            <span>Borrar también los emojis del subtítulo</span>
+          </label>
+        </div>
+      </details>
+
+      <button id="btn-render" class="primary big">Procesar todo</button>
+
+      <div id="render-status" class="status hidden"></div>
+      <div class="progress hidden" id="progress"><div class="bar" id="progress-bar"></div></div>
+    </section>
+
+    <!-- ---------------------------------------------------------------- salida -->
+    <section class="step hidden" id="step-result">
+      <div class="step-head"><span class="num">✓</span><h2>Listo</h2></div>
+      <div id="results" class="results"></div>
+      <div class="result-actions">
+        <button id="btn-zip" class="primary">Descargar todos (ZIP)</button>
+        <button class="ghost" data-goto="timeline">Ver la línea de tiempo</button>
+        <button id="btn-restart" class="ghost">Empezar de nuevo</button>
+      </div>
+      <div id="zip-status" class="status hidden"></div>
+    </section>
+  </div>
+
+  <!-- ============================================================ pestana 3 -->
+  <div class="panel hidden" id="tab-timeline">
+    <section class="step">
+      <div class="step-head"><span class="num">▦</span><h2>Línea de tiempo</h2></div>
+      <div id="tl-root"></div>
+    </section>
+  </div>
 
 </main>
 
 <footer class="wrap foot">
-  <p>Los videos nunca salen de tu navegador. Solo se envían fotogramas sueltos a Claude para detectar y traducir el texto.</p>
+  <p>Los videos se procesan en tu navegador. Solo se envían fotogramas sueltos a Claude para detectar y traducir el texto.</p>
 </footer>
 
 <script src="/vendor/mp4box.all.min.js"></script>
@@ -162,5 +233,8 @@
 <script src="/js/video.js"></script>
 <script src="/js/pipeline.js"></script>
 <script src="/js/app.js"></script>
+<script src="/js/downloader.js"></script>
+<script src="/js/timeline.js"></script>
+<script src="/js/tabs.js"></script>
 </body>
 </html>

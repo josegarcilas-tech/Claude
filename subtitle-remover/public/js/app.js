@@ -28,6 +28,13 @@
     return state.jobs.filter(function (j) { return j.status === 'hecho' && j.blob; });
   }
 
+  var listeners = [];
+  function emitChange() {
+    listeners.forEach(function (fn) {
+      try { fn(state.jobs); } catch (e) { /* un oyente roto no tumba el render */ }
+    });
+  }
+
   // --------------------------------------------------------------- utilidades
 
   function show(el) { el.classList.remove('hidden'); }
@@ -199,6 +206,7 @@
   };
 
   function renderJobs() {
+    emitChange();
     var host = $('job-list');
     host.innerHTML = '';
     state.jobs.forEach(function (job) {
@@ -822,6 +830,18 @@
       setStatus(status, 'No se pudo crear el ZIP.', 'err', String(err && err.message || err));
     }).then(function () { btn.disabled = false; });
   });
+
+  /**
+   * Puente con las otras pestanas: la de descarga mete archivos aqui, y la linea
+   * de tiempo lee los trabajos ya procesados.
+   */
+  SR.App = {
+    addFiles: function (files) { addFiles(files); },
+    jobs: function () { return state.jobs; },
+    doneJobs: doneJobs,
+    onChange: function (fn) { listeners.push(fn); },
+    mode: function () { return state.mode; }
+  };
 
   $('btn-restart').addEventListener('click', function () {
     state.jobs.forEach(function (j) { if (j.blobUrl) URL.revokeObjectURL(j.blobUrl); });
