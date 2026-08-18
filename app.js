@@ -264,10 +264,12 @@ function renderClipList() {
       <button class="clip-x" type="button" aria-label="Quitar">×</button>`;
     li.addEventListener('click', e => {
       if (e.target.classList.contains('clip-x')) return;
+      pausarVista();                     // no seguir reproduciendo el anterior
       state.sel = i; renderClipList(); renderStage();
       if (isPhone()) goTab('texto');
     });
     li.querySelector('.clip-x').addEventListener('click', () => {
+      pausarVista();
       URL.revokeObjectURL(clip.url);
       state.clips.splice(i, 1);
       if (state.sel >= state.clips.length) state.sel = state.clips.length - 1;
@@ -278,6 +280,7 @@ function renderClipList() {
 }
 
 $('clearBatch').addEventListener('click', () => {
+  pausarVista();
   state.clips.forEach(c => URL.revokeObjectURL(c.url));
   state.clips = []; state.sel = -1;
   renderClipList(); renderStage();
@@ -772,6 +775,7 @@ function renderStage() {
   $('emptyNote').hidden = state.clips.length > 0;
   $('clearBatch').hidden = state.clips.length === 0;
   $('heroAuto').hidden = state.clips.length === 0;
+  actualizarBotonPlay();
   if (!clip) return;
 
   const scrub = $('scrub');
@@ -800,7 +804,9 @@ function paint() {
   const clip = currentClip();
   if (!clip) return;
   const W = clip.w, H = clip.h;
-  preview.width = W; preview.height = H;
+  // solo se redimensiona si cambió: asignar width/height reserva el lienzo de
+  // nuevo, y durante la reproducción esto corre en cada cuadro
+  if (preview.width !== W || preview.height !== H) { preview.width = W; preview.height = H; }
 
   pctx.clearRect(0, 0, W, H);
   pctx.drawImage(clip.media, 0, 0, W, H);
@@ -850,6 +856,7 @@ preview.addEventListener('pointerdown', e => {
   if (!cue) return;
 
   e.preventDefault();
+  if (reproduciendo) pausarVista();   // se acomoda con el video quieto
   try { preview.setPointerCapture(e.pointerId); } catch (err) { /* sin captura igual funciona */ }
 
   const W = preview.width, H = preview.height;
@@ -905,9 +912,91 @@ function terminarArrastre(e) {
 preview.addEventListener('pointerup', terminarArrastre);
 preview.addEventListener('pointercancel', terminarArrastre);
 
+/* ---------------- reproducir la vista previa ---------------- */
+
+const ICONO_PLAY = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.2l11.5 6.8L8 18.8z"/></svg>';
+const ICONO_PAUSA = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="5" width="3.6" height="14" rx="1.2"/><rect x="13.4" y="5" width="3.6" height="14" rx="1.2"/></svg>';
+
+let reproduciendo = false;
+let rafVista = null;
+
+function actualizarBotonPlay() {
+  const btn = $('playBtn');
+  const clip = currentClip();
+  btn.disabled = !clip || !clip.isVideo || busy;
+  btn.innerHTML = reproduciendo ? ICONO_PAUSA : ICONO_PLAY;
+  btn.setAttribute('aria-label', reproduciendo ? 'Pausar' : 'Reproducir');
+}
+
+/** Marca qué línea está sonando ahora, sin rehacer toda la lista. */
+function marcarCueActiva() {
+  const clip = currentClip();
+  if (!clip) return;
+  const filas = $('cueList').children;
+  for (let i = 0; i < filas.length && i < clip.cues.length; i++) {
+    const c = clip.cues[i];
+    filas[i].classList.toggle('active', clip.isVideo && clip.time >= c.start && clip.time <= c.end);
+  }
+}
+
+function bucleVista() {
+  const clip = currentClip();
+  if (!reproduciendo || !clip || !clip.isVideo || busy) { pausarVista(); return; }
+
+  const v = clip.media;
+  clip.time = v.currentTime;
+  paint();
+  $('scrub').value = clip.time;
+  $('tcNow').textContent = clip.time.toFixed(2) + 's';
+  marcarCueActiva();
+
+  if (v.ended || (clip.dur && clip.time >= clip.dur - 0.03)) { pausarVista(); return; }
+  rafVista = requestAnimationFrame(bucleVista);
+}
+
+function pausarVista() {
+  const clip = currentClip();
+  reproduciendo = false;
+  if (rafVista) cancelAnimationFrame(rafVista);
+  rafVista = null;
+  if (clip && clip.isVideo) { try { clip.media.pause(); } catch (e) { /* ya estaba detenido */ } }
+  actualizarBotonPlay();
+}
+
+async function reproducirVista() {
+  const clip = currentClip();
+  if (!clip || !clip.isVideo || busy) return;
+  const v = clip.media;
+  v.muted = true;            // la vista previa siempre va muda
+  v.playsInline = true;
+
+  // si quedó al final, vuelve a empezar
+  if (clip.dur && v.currentTime >= clip.dur - 0.05) {
+    try { await seekTo(v, 0); } catch (e) { /* igual se intenta reproducir */ }
+    clip.time = 0;
+  }
+
+  try {
+    await v.play();
+  } catch (e) {
+    toast('El navegador no dejó reproducir la vista previa. Tocá el botón otra vez.', true);
+    return;
+  }
+
+  reproduciendo = true;
+  actualizarBotonPlay();
+  rafVista = requestAnimationFrame(bucleVista);
+}
+
+$('playBtn').addEventListener('click', () => {
+  if (reproduciendo) { pausarVista(); renderCues(); }
+  else reproducirVista();
+});
+
 $('scrub').addEventListener('input', e => {
   const clip = currentClip();
   if (!clip || !clip.isVideo) return;
+  if (reproduciendo) pausarVista();     // mover la barra manda sobre la reproducción
   clip.time = parseFloat(e.target.value);
   $('tcNow').textContent = clip.time.toFixed(2) + 's';
   clip.media.currentTime = clip.time;
@@ -1539,7 +1628,9 @@ async function runExport(clips) {
   if (busy) return;
   if (!clips.length) { toast('No hay nada en el lote.', true); return; }
 
+  pausarVista();          // el exportador necesita el video para él solo
   busy = true;
+  actualizarBotonPlay();  // recién ahora se ve apagado: pausarVista corre antes de busy
   $('results').hidden = true;
   $('renderOne').disabled = true;
   $('renderAll').disabled = true;
@@ -1582,6 +1673,7 @@ async function runExport(clips) {
     $('renderAll').disabled = false;
     $('reExport').disabled = false;
     $('reExport').textContent = 'Descargar con estos cambios';
+    actualizarBotonPlay();
     setTimeout(() => { $('progressWrap').hidden = true; }, 6000);
   }
 }
@@ -2038,7 +2130,9 @@ async function runAuto(clips) {
   if (busy) return;
   if (!clips.length) { toast('Primero cargá un video o una imagen.', true); return; }
 
+  pausarVista();          // el exportador necesita el video para él solo
   busy = true;
+  actualizarBotonPlay();  // recién ahora se ve apagado: pausarVista corre antes de busy
   $('results').hidden = true;
   const btn = $('autoRun');
   btn.disabled = true; btn.textContent = 'Trabajando…';
@@ -2114,6 +2208,7 @@ async function runAuto(clips) {
     btn.disabled = false; btn.textContent = 'Traducir y descargar';
     $('renderOne').disabled = false; $('renderAll').disabled = false;
     $('reExport').disabled = false;
+    actualizarBotonPlay();
     setTimeout(() => { $('progressWrap').hidden = true; }, 7000);
   }
 }
@@ -2484,6 +2579,7 @@ window.addEventListener('resize', () => {
 document.fonts.ready.then(() => paint());
 renderClipList();
 renderStage();
+actualizarBotonPlay();
 setEngine('en espera', 'chip-idle');
 $('mobileNote').hidden = !isPhone();
 goTab('lote');

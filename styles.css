@@ -83,6 +83,14 @@ body{
   margin:10px auto 0;max-width:290px;
 }
 .frame-tools input[type=range]{flex:1}
+.playbtn{
+  flex:none;width:40px;height:40px;border-radius:50%;
+  border:1px solid var(--edge);background:var(--surface-2);color:var(--amber);
+  display:grid;place-items:center;cursor:pointer;padding:0;
+}
+.playbtn svg{width:20px;height:20px;fill:currentColor;stroke:none}
+.playbtn:active:not(:disabled){filter:brightness(1.25)}
+.playbtn:disabled{opacity:.4;cursor:default}
 .tc{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--ink-dim);min-width:52px;text-align:right}
 
 /* ---------------- layout ---------------- */

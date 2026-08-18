@@ -24,6 +24,7 @@ Cuando termina, revisá el resultado. Si algo quedó torcido —una palabra mal 
 - **Tapa el subtítulo original** sin tocar el resto del cuadro: solo difumina la silueta de las letras (o, si preferís, toda la franja).
 - **Edición por línea de tiempo.** Cada línea de texto tiene su "desde" y "hasta" en segundos; se puede ajustar, agregar o borrar, y la vista previa salta a ese momento con un toque.
 - **Cada línea se mueve donde quieras.** Arrastrá el subtítulo con el dedo (o el mouse) sobre la vista previa para llevarlo justo encima del original y taparlo. También hay deslizadores de posición arriba/abajo e izquierda/derecha por si querés precisión, y un botón para devolver la línea al centro.
+- **Vista previa que anda sola.** Botón de reproducir/pausar debajo del video: se ve el resultado en movimiento sin tener que arrastrar la barra a mano. Se pausa solo al terminar, al agarrar un subtítulo para moverlo, al mover la barra o al empezar a exportar.
 - **Marca de agua con tu logo.** Subís una imagen (PNG con fondo transparente da el mejor resultado), elegís la esquina, el tamaño y la **intensidad** (opacidad) con la que se ve, y queda pegada en todo el lote.
 - **Importar desde TikTok.** Pegás el enlace del video y se descarga directo a tu lote, sin marca de agua de TikTok, listo para traducir.
 - **Descarga del video terminado.** Un archivo o el lote completo en un ZIP; en iPhone se abre el menú de compartir para guardarlo en Fotos o Archivos.
