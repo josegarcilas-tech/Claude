@@ -22,7 +22,7 @@ const state = {
     y: 16,          // % del alto (borde superior del bloque)
     maxW: 86        // % del ancho
   },
-  cover: { on: true, mode: 'text', color: '#120a26', strength: 9, y: 14, h: 12, zones: null, boxOpacity: 95, boxRadius: 22, boxMinW: 0 },
+  cover: { on: true, mode: 'box', color: '#120a26', strength: 9, y: 14, h: 12, zones: null, boxOpacity: 95, boxRadius: 22, boxMinW: 72 },
   audio: { mode: 'keep', mute: false, musicVol: 28, voiceDelay: 0.5 },
   logo: { on: false, file: null, img: null, opacity: 70, size: 16, margin: 4, pos: 'br' },
   zip: true
@@ -471,18 +471,18 @@ const _blurA = document.createElement('canvas');
 const _blurB = document.createElement('canvas');
 
 /**
- * "Solo el texto" y "Fondo detrás de la traducción" comparten la misma
- * limpieza del original: solo se toca la silueta de sus letras. La
- * diferencia es que en "box" además se dibuja una placa detrás del texto
- * nuevo (en drawSubtitle), donde sea que el usuario la haya movido — así
- * el original queda tapado sin importar dónde termine yendo la traducción.
+ * Solo "Solo el texto" difumina la silueta de las letras originales.
+ * "Fondo detrás de la traducción" no: para no dejar un manchón difuminado
+ * donde estaba el original, tapa con la placa opaca nada más (por eso por
+ * defecto es bien ancha — ver cover.boxMinW).
  */
 function coverUsesMask() {
-  return state.cover.mode === 'text' || state.cover.mode === 'box';
+  return state.cover.mode === 'text';
 }
 
 function drawCover(ctx, media, W, H, clip, t) {
   if (!state.cover.on) return;
+  if (state.cover.mode === 'box') return; // acá tapa solo la placa opaca de drawSubtitle, sin difuminado
   const y = Math.round((state.cover.y / 100) * H);
   const h = Math.round((state.cover.h / 100) * H);
   if (h <= 0) return;

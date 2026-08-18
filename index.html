@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,400;0,600;0,700;0,800;0,900;1,700&family=Poppins:wght@400;600;800&family=Inter:wght@400;600;800&family=Bebas+Neue&family=Anton&family=Archivo+Black&family=Oswald:wght@500;700&family=Nunito:wght@700;900&family=Playfair+Display:wght@700;900&family=Permanent+Marker&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="./styles.css?v=21">
+<link rel="stylesheet" href="./styles.css?v=22">
 </head>
 <body data-tab="lote">
 
@@ -106,8 +106,8 @@
           <label class="field">
             <span>Modo</span>
             <select id="coverMode">
-              <option value="text" selected>Solo el texto</option>
-              <option value="box">Fondo detrás de la traducción</option>
+              <option value="box" selected>Fondo detrás de la traducción</option>
+              <option value="text">Solo el texto</option>
               <option value="blur">Franja difuminada</option>
               <option value="solid">Barra sólida</option>
             </select>
@@ -137,11 +137,11 @@
             <input type="range" id="coverBoxRadius" min="0" max="50" value="22" step="1">
           </label>
           <label class="field">
-            <span>Ancho mínimo <em id="coverBoxMinWv">0%</em></span>
-            <input type="range" id="coverBoxMinW" min="0" max="100" value="0" step="1">
+            <span>Ancho mínimo <em id="coverBoxMinWv">72%</em></span>
+            <input type="range" id="coverBoxMinW" min="0" max="100" value="72" step="1">
           </label>
         </div>
-        <p class="hint"><strong>Solo el texto</strong> borra únicamente las letras originales y deja el resto del video intacto. <strong>Fondo detrás de la traducción</strong> hace lo mismo con el original y además le pone una placa a la traducción — como esa placa sigue al texto (podés moverlo con "Posición vertical" en cada línea, abajo), el original queda tapado sin importar a dónde lo lleves. La franja de abajo marca dónde buscar el subtítulo, no siempre se dibuja.</p>
+        <p class="hint"><strong>Fondo detrás de la traducción</strong> (la de fábrica) tapa el subtítulo original con una placa lisa detrás del texto nuevo — sin difuminado ni manchones, lo cubre del todo. Si te queda corta, subí <strong>Ancho mínimo</strong> hasta que no asome nada del original a los costados. <strong>Solo el texto</strong> en cambio no pone placa: difumina nada más la silueta de las letras originales y deja el resto del cuadro intacto. La franja de abajo marca dónde buscar el subtítulo, no siempre se dibuja.</p>
       </div>
     </div>
   </section>
@@ -344,6 +344,6 @@
 <script src="https://unpkg.com/@ffmpeg/util@0.12.1/dist/umd/index.js"></script>
 <script src="https://unpkg.com/jszip@3.10.1/dist/jszip.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.1.1/dist/tesseract.min.js"></script>
-<script src="./app.js?v=21"></script>
+<script src="./app.js?v=22"></script>
 </body>
 </html>
