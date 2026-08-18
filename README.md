@@ -24,6 +24,7 @@ Cuando termina, revisá el resultado. Si algo quedó torcido —una palabra mal 
 - **Tapa el subtítulo original** sin tocar el resto del cuadro: solo difumina la silueta de las letras (o, si preferís, toda la franja).
 - **Edición por línea de tiempo.** Cada línea de texto tiene su "desde" y "hasta" en segundos; se puede ajustar, agregar o borrar, y la vista previa salta a ese momento con un toque.
 - **Cada línea se mueve y se agranda por separado.** Arrastrá el subtítulo con el dedo (o el mouse) sobre la vista previa para llevarlo justo encima del original y taparlo. Cada línea tiene además sus deslizadores de arriba/abajo, izquierda/derecha y **tamaño propio**, con botones para volver a los valores generales.
+- **Línea de tiempo con cortes.** Debajo del video hay una barra con las partes del clip. Poné el cabezal donde quieras, tocá **Dividir acá**, elegí el pedazo que sobra y **Borrar parte**. El video original no se toca: se guarda qué tramos se conservan, la vista previa ya salta los cortes, y el archivo exportado sale sin ellos. Los subtítulos se acomodan solos — los que caían dentro de lo borrado desaparecen y los de después se corren.
 - **Vista previa que anda sola.** Botón de reproducir/pausar debajo del video: se ve el resultado en movimiento sin tener que arrastrar la barra a mano. Se pausa solo al terminar, al agarrar un subtítulo para moverlo, al mover la barra o al empezar a exportar.
 - **Marca de agua con tu logo.** Subís una imagen (PNG con fondo transparente da el mejor resultado), elegís la esquina, el tamaño y la **intensidad** (opacidad) con la que se ve, y queda pegada en todo el lote.
 - **Importar desde TikTok e Instagram.** Pegás el enlace y se descarga directo a tu lote, listo para traducir. TikTok viene sin marca de agua; de Instagram funcionan los posts y reels públicos.
@@ -66,11 +67,12 @@ No necesita ninguna llave. TikTok pasa por un servicio externo (tikwm.com) que d
 1. **Soltá los archivos** en el panel de la izquierda, o pegá un enlace de TikTok para importarlo.
 2. **Ubicá la franja** que tapa el subtítulo original: movela con los deslizadores hasta cubrirlo por completo. Podés difuminarla, poner una barra sólida, o tapar solo las letras.
 3. **Poné el texto**: escribilo directo, leelo del video con OCR, o mandalo a traducir con Claude.
-4. **Ajustá los tiempos** de cada línea (desde / hasta, en segundos) y **arrastrala en la vista previa** hasta que tape el subtítulo original.
-5. **Elegí la letra**: fuente, grosor, tamaño, borde, colores y altura en pantalla.
-6. **Subí tu logo** en la pestaña Letra, elegí la esquina, el tamaño y la intensidad con la que se ve.
-7. **Subí la voz** doblada si tenés una, o dejá el audio original.
-8. **Exportá**: un archivo o el lote completo en un ZIP.
+4. **Sacá lo que sobra** con la línea de tiempo: dividí y borrá las partes que no querés.
+5. **Ajustá los tiempos** de cada línea (desde / hasta, en segundos) y **arrastrala en la vista previa** hasta que tape el subtítulo original.
+6. **Elegí la letra**: fuente, grosor, tamaño, borde, colores y altura en pantalla.
+7. **Subí tu logo** en la pestaña Letra, elegí la esquina, el tamaño y la intensidad con la que se ve.
+8. **Subí la voz** doblada si tenés una, o dejá el audio original.
+9. **Exportá**: un archivo o el lote completo en un ZIP.
 
 ---
 

@@ -227,6 +227,8 @@ async function buildClip(file) {
     w: v.videoWidth, h: v.videoHeight, dur,
     thumb,
     cues: [{ text: '', start: 0, end: Math.min(3, dur || 3) }],
+    tramos: [{ a: 0, b: dur }],   // partes que se conservan, en tiempo del original
+    tramoSel: 0,
     voice: null, time: 0, status: ''
   };
 }
@@ -255,7 +257,10 @@ function renderClipList() {
     const li = document.createElement('li');
     li.className = 'clip' + (i === state.sel ? ' sel' : '');
     const lines = clip.cues.filter(c => c.text.trim()).length;
-    const bits = [clip.isVideo ? `${clip.dur.toFixed(1)}s` : 'imagen', `${lines} línea${lines === 1 ? '' : 's'}`];
+    const dur = clip.isVideo
+      ? (hayCortes(clip) ? `${duracionEditada(clip).toFixed(1)}s ✂` : `${clip.dur.toFixed(1)}s`)
+      : 'imagen';
+    const bits = [dur, `${lines} línea${lines === 1 ? '' : 's'}`];
     if (clip.voice) bits.push('voz ✓');
     li.innerHTML = `
       <img class="clip-thumb" src="${clip.thumb || BLANK}" alt="">
@@ -794,6 +799,110 @@ function cuesEn(clip, t) {
   );
 }
 
+/* ============================================================
+   LÍNEA DE TIEMPO — cortar partes del video
+   El video no se toca: se guarda qué tramos se conservan, en tiempo
+   del original. Todo lo demás (vista previa, subtítulos, exportación)
+   convierte entre "tiempo del original" y "tiempo del resultado".
+   ============================================================ */
+
+/** Tramos que se conservan. Sin cortes, es el video entero. */
+function tramosDe(clip) {
+  if (!clip || !clip.isVideo) return [];
+  if (!clip.tramos || !clip.tramos.length) return [{ a: 0, b: clip.dur }];
+  return clip.tramos;
+}
+
+function hayCortes(clip) {
+  const t = tramosDe(clip);
+  return t.length > 1 || (t.length === 1 && (t[0].a > 0.01 || t[0].b < clip.dur - 0.01));
+}
+
+/** Cuánto dura el video una vez sacadas las partes cortadas. */
+function duracionEditada(clip) {
+  if (!clip || !clip.isVideo) return 0;
+  const d = tramosDe(clip).reduce((s, t) => s + Math.max(0, t.b - t.a), 0);
+  return d > 0 ? d : clip.dur;
+}
+
+/** Tiempo del original -> tiempo del resultado. null si ese momento se cortó. */
+function aSalida(clip, tFuente) {
+  let acum = 0;
+  for (const t of tramosDe(clip)) {
+    if (tFuente < t.a) return acum;          // cayó en un hueco: vale el corte
+    if (tFuente <= t.b) return acum + (tFuente - t.a);
+    acum += t.b - t.a;
+  }
+  return acum;
+}
+
+/** Tiempo del resultado -> tiempo del original. */
+function aFuente(clip, tSalida) {
+  let resto = Math.max(0, tSalida);
+  const lista = tramosDe(clip);
+  for (const t of lista) {
+    const largo = t.b - t.a;
+    if (resto <= largo) return t.a + resto;
+    resto -= largo;
+  }
+  const ultimo = lista[lista.length - 1];
+  return ultimo ? ultimo.b : 0;
+}
+
+/** El tramo que contiene ese momento del original, o -1. */
+function tramoEn(clip, tFuente) {
+  const lista = tramosDe(clip);
+  for (let i = 0; i < lista.length; i++) {
+    if (tFuente >= lista[i].a - 0.001 && tFuente <= lista[i].b + 0.001) return i;
+  }
+  return -1;
+}
+
+/** Divide en dos el tramo que contiene ese momento. */
+function dividirEn(clip, tFuente) {
+  const lista = tramosDe(clip).map(t => ({ ...t }));
+  const i = tramoEn(clip, tFuente);
+  if (i < 0) return false;
+  const t = lista[i];
+  const MIN = 0.15;   // no tiene sentido un pedazo más corto que esto
+  if (tFuente - t.a < MIN || t.b - tFuente < MIN) return false;
+  lista.splice(i, 1, { a: t.a, b: tFuente }, { a: tFuente, b: t.b });
+  clip.tramos = lista;
+  clip.tramoSel = i + 1;
+  return true;
+}
+
+/** Saca un tramo. Nunca deja el video sin nada. */
+function borrarTramo(clip, i) {
+  const lista = tramosDe(clip).map(t => ({ ...t }));
+  if (lista.length <= 1 || i < 0 || i >= lista.length) return false;
+  lista.splice(i, 1);
+  clip.tramos = lista;
+  clip.tramoSel = Math.min(i, lista.length - 1);
+  return true;
+}
+
+/**
+ * Pasa los tiempos de las líneas de subtítulo al tiempo del resultado y
+ * descarta las que quedaron enteras dentro de una parte cortada.
+ */
+function cuesRecortadas(clip) {
+  if (!hayCortes(clip)) return clip.cues.filter(c => c.text.trim());
+  const fuera = [];
+  for (const c of clip.cues) {
+    if (!c.text.trim()) continue;
+    // se parte la línea por cada tramo que la toque, para que siga
+    // apareciendo en los pedazos que sí quedaron
+    for (const t of tramosDe(clip)) {
+      const a = Math.max(c.start, t.a);
+      const b = Math.min(c.end, t.b);
+      if (b - a <= 0.02) continue;
+      fuera.push({ ...c, start: aSalida(clip, a), end: aSalida(clip, b) });
+    }
+  }
+  return fuera;
+}
+
 function renderStage() {
   const clip = currentClip();
   $('stageEmpty').hidden = !!clip;
@@ -807,9 +916,13 @@ function renderStage() {
 
   const scrub = $('scrub');
   scrub.disabled = !clip.isVideo;
-  scrub.max = clip.isVideo ? clip.dur.toFixed(2) : 1;
-  scrub.value = Math.min(clip.time, clip.isVideo ? clip.dur : 1);
-  $('tcNow').textContent = clip.isVideo ? clip.time.toFixed(2) + 's' : 'imagen';
+  if (clip.isVideo) {
+    actualizarBarra();          // la barra va en tiempo del resultado
+  } else {
+    scrub.max = 1; scrub.value = 0;
+    $('tcNow').textContent = 'imagen';
+  }
+  renderTimeline();
 
   updateVoiceBox(clip);
   renderCues();
@@ -972,12 +1085,26 @@ function bucleVista() {
 
   const v = clip.media;
   clip.time = v.currentTime;
+
+  // Si la reproducción entró en una parte cortada, se salta al principio de
+  // la siguiente que se conserva. Así la vista previa muestra el resultado.
+  const lista = tramosDe(clip);
+  if (tramoEn(clip, clip.time) < 0) {
+    const sig = lista.find(t => t.a > clip.time);
+    if (!sig) { pausarVista(); return; }        // no queda nada más: terminó
+    clip.tramoSel = lista.indexOf(sig);
+    clip.time = sig.a;
+    v.currentTime = sig.a;
+  } else {
+    clip.tramoSel = tramoEn(clip, clip.time);
+  }
+
   paint();
-  $('scrub').value = clip.time;
-  $('tcNow').textContent = clip.time.toFixed(2) + 's';
+  actualizarBarra();
   marcarCueActiva();
 
-  if (v.ended || (clip.dur && clip.time >= clip.dur - 0.03)) { pausarVista(); return; }
+  const fin = lista.length ? lista[lista.length - 1].b : clip.dur;
+  if (v.ended || clip.time >= fin - 0.03) { pausarVista(); return; }
   rafVista = requestAnimationFrame(bucleVista);
 }
 
@@ -997,10 +1124,13 @@ async function reproducirVista() {
   v.muted = true;            // la vista previa siempre va muda
   v.playsInline = true;
 
-  // si quedó al final, vuelve a empezar
-  if (clip.dur && v.currentTime >= clip.dur - 0.05) {
-    try { await seekTo(v, 0); } catch (e) { /* igual se intenta reproducir */ }
-    clip.time = 0;
+  // si quedó al final (o parado en una parte cortada), vuelve al principio
+  const lista = tramosDe(clip);
+  const fin = lista.length ? lista[lista.length - 1].b : clip.dur;
+  const inicio = lista.length ? lista[0].a : 0;
+  if (v.currentTime >= fin - 0.05 || tramoEn(clip, v.currentTime) < 0) {
+    try { await seekTo(v, inicio); } catch (e) { /* igual se intenta reproducir */ }
+    clip.time = inicio;
   }
 
   try {
@@ -1024,10 +1154,126 @@ $('scrub').addEventListener('input', e => {
   const clip = currentClip();
   if (!clip || !clip.isVideo) return;
   if (reproduciendo) pausarVista();     // mover la barra manda sobre la reproducción
-  clip.time = parseFloat(e.target.value);
-  $('tcNow').textContent = clip.time.toFixed(2) + 's';
+  // la barra va en tiempo del RESULTADO; el video en tiempo del original
+  const tSalida = parseFloat(e.target.value);
+  clip.time = aFuente(clip, tSalida);
+  clip.tramoSel = Math.max(0, tramoEn(clip, clip.time));
+  $('tcNow').textContent = tSalida.toFixed(2) + 's';
+  clip.media.currentTime = clip.time;
+  clip.media.onseeked = () => { paint(); renderCues(); renderTimeline(); };
+  renderTimeline();
+});
+
+/* ---------------- línea de tiempo ---------------- */
+
+function renderTimeline() {
+  const clip = currentClip();
+  const caja = $('timeline');
+  caja.hidden = !clip || !clip.isVideo;
+  if (caja.hidden) return;
+
+  const pista = $('tlTrack');
+  const lista = tramosDe(clip);
+  const total = lista.reduce((s, t) => s + (t.b - t.a), 0) || 1;
+
+  // se rehacen solo los pedazos; el cabezal se mueve aparte
+  [...pista.querySelectorAll('.tl-part')].forEach(n => n.remove());
+  const cabeza = $('tlHead');
+
+  lista.forEach((t, i) => {
+    const d = document.createElement('div');
+    d.className = 'tl-part' + (i === clip.tramoSel ? ' sel' : '');
+    d.style.flex = `${Math.max(0.03, (t.b - t.a) / total)} 1 0`;
+    if (clip.thumb) {
+      d.style.backgroundImage = `url(${clip.thumb})`;
+      d.style.backgroundSize = 'cover';
+      d.style.backgroundPosition = 'center';
+    }
+    const s = document.createElement('span');
+    s.textContent = (t.b - t.a).toFixed(1) + 's';
+    d.appendChild(s);
+    d.addEventListener('click', () => {
+      clip.tramoSel = i;
+      // el cabezal salta al principio de la parte elegida
+      clip.time = t.a + 0.03;
+      if (reproduciendo) pausarVista();
+      clip.media.currentTime = clip.time;
+      clip.media.onseeked = () => { paint(); renderCues(); };
+      renderTimeline();
+      actualizarBarra();
+    });
+    pista.insertBefore(d, cabeza);
+  });
+
+  posicionarCabezal();
+
+  const cortes = hayCortes(clip);
+  $('tlDelete').disabled = lista.length <= 1;
+  $('tlReset').disabled = !cortes;
+  $('tlInfo').textContent = cortes
+    ? `${lista.length} parte${lista.length === 1 ? '' : 's'} · queda ${duracionEditada(clip).toFixed(2)}s de ${clip.dur.toFixed(2)}s`
+    : `${clip.dur.toFixed(2)}s · sin cortes`;
+}
+
+function posicionarCabezal() {
+  const clip = currentClip();
+  if (!clip || !clip.isVideo) return;
+  const frac = duracionEditada(clip) ? aSalida(clip, clip.time) / duracionEditada(clip) : 0;
+  $('tlHead').style.left = `calc(${Math.max(0, Math.min(1, frac)) * 100}% - 1px)`;
+}
+
+/** Deja la barra y el reloj de acuerdo con el momento actual. */
+function actualizarBarra() {
+  const clip = currentClip();
+  if (!clip || !clip.isVideo) return;
+  const tSalida = aSalida(clip, clip.time);
+  $('scrub').max = duracionEditada(clip).toFixed(2);
+  $('scrub').value = tSalida;
+  $('tcNow').textContent = tSalida.toFixed(2) + 's';
+  posicionarCabezal();
+}
+
+$('tlSplit').addEventListener('click', () => {
+  const clip = currentClip();
+  if (!clip || !clip.isVideo || busy) return;
+  if (reproduciendo) pausarVista();
+  if (dividirEn(clip, clip.time)) {
+    renderTimeline();
+    toast('Dividido. Elegí la parte que sobra y tocá "Borrar parte".');
+  } else {
+    toast('Ahí no se puede dividir: quedaría un pedazo demasiado corto.', true);
+  }
+});
+
+$('tlDelete').addEventListener('click', () => {
+  const clip = currentClip();
+  if (!clip || !clip.isVideo || busy) return;
+  if (reproduciendo) pausarVista();
+  if (!borrarTramo(clip, clip.tramoSel)) {
+    toast('No se puede borrar la única parte que queda.', true);
+    return;
+  }
+  // el cabezal se recoloca dentro de lo que sobrevivió
+  const lista = tramosDe(clip);
+  const t = lista[Math.min(clip.tramoSel, lista.length - 1)];
+  clip.time = t ? t.a + 0.03 : 0;
   clip.media.currentTime = clip.time;
   clip.media.onseeked = () => { paint(); renderCues(); };
+  renderTimeline();
+  actualizarBarra();
+  renderClipList();
+  toast(`Listo. Quedan ${duracionEditada(clip).toFixed(1)}s.`);
+});
+
+$('tlReset').addEventListener('click', () => {
+  const clip = currentClip();
+  if (!clip || !clip.isVideo || busy) return;
+  if (reproduciendo) pausarVista();
+  clip.tramos = [{ a: 0, b: clip.dur }];
+  clip.tramoSel = 0;
+  renderTimeline();
+  actualizarBarra();
+  renderClipList();
 });
 
 /* ---------------- líneas de subtítulo ---------------- */
@@ -1481,6 +1727,34 @@ async function exportVideo(clip) {
   let last = '0:v';
   let idx = 1;
 
+  // ---- cortes de la línea de tiempo ----
+  // Se recorta cada parte que se conserva y se pegan una detrás de otra. Va
+  // primero que todo, así lo que sigue trabaja ya con el video recortado y
+  // los tiempos de los subtítulos coinciden.
+  const conCortes = hayCortes(clip);
+  const tramos = tramosDe(clip);
+  const durSalida = conCortes ? duracionEditada(clip) : dur;
+  let refAudio = '0:a';
+
+  if (conCortes) {
+    const etiquetasV = [];
+    const etiquetasA = [];
+    tramos.forEach((t, i) => {
+      filters.push(`[0:v]trim=start=${t.a.toFixed(3)}:end=${t.b.toFixed(3)},setpts=PTS-STARTPTS[tv${i}]`);
+      etiquetasV.push(`[tv${i}]`);
+      if (!state.audio.mute) {
+        filters.push(`[0:a]atrim=start=${t.a.toFixed(3)}:end=${t.b.toFixed(3)},asetpts=PTS-STARTPTS[ta${i}]`);
+        etiquetasA.push(`[ta${i}]`);
+      }
+    });
+    filters.push(`${etiquetasV.join('')}concat=n=${tramos.length}:v=1:a=0[vcorte]`);
+    last = 'vcorte';
+    if (etiquetasA.length) {
+      filters.push(`${etiquetasA.join('')}concat=n=${etiquetasA.length}:v=0:a=1[acorte]`);
+      refAudio = '[acorte]';
+    }
+  }
+
   // franja que tapa el subtítulo original
   if (state.cover.on && state.cover.h > 0) {
     const cy = Math.round((state.cover.y / 100) * H);
@@ -1498,7 +1772,7 @@ async function exportVideo(clip) {
 
   // una superposición por línea de subtítulo
   let n = 0;
-  for (const cue of clip.cues) {
+  for (const cue of cuesRecortadas(clip)) {
     if (!cue.text.trim()) continue;
     const ov = cueOverlay(clip, cue);
     if (!ov) continue;
@@ -1506,7 +1780,7 @@ async function exportVideo(clip) {
     await ffmpeg.writeFile(png, await canvasToBytes(ov.canvas));
     inputs.push('-i', png);
     const start = Math.max(0, cue.start);
-    const end = Math.min(dur, cue.end > cue.start ? cue.end : dur);
+    const end = Math.min(durSalida, cue.end > cue.start ? cue.end : durSalida);
     filters.push(`[${last}][${idx}:v]overlay=${ov.x}:${ov.y}:enable='between(t,${start.toFixed(2)},${end.toFixed(2)})'[v${n}]`);
     last = `v${n}`;
     idx++; n++;
@@ -1551,16 +1825,17 @@ async function exportVideo(clip) {
     args.push('-an');
   } else if (mode === 'keep' || ((mode === 'voice' || mode === 'mix') && !hasVoice)) {
     // sin archivo de voz cargado, se conserva el audio original
-    maps.push('-map', '0:a?');
+    if (conCortes) { maps.push('-map', refAudio); }
+    else { maps.push('-map', '0:a?'); }
     args.push('-c:a', 'aac', '-b:a', '160k');
   } else if (mode === 'voice') {
-    filters.push(`[${voiceIdx}:a]aformat=sample_rates=44100:channel_layouts=stereo,adelay=${d}|${d},apad=whole_dur=${dur.toFixed(2)}[aout]`);
+    filters.push(`[${voiceIdx}:a]aformat=sample_rates=44100:channel_layouts=stereo,adelay=${d}|${d},apad=whole_dur=${durSalida.toFixed(2)}[aout]`);
     maps.push('-map', '[aout]');
     args.push('-c:a', 'aac', '-b:a', '192k');
   } else if (mode === 'mix') {
     const mv = (state.audio.musicVol / 100).toFixed(2);
-    filters.push(`[${voiceIdx}:a]aformat=sample_rates=44100:channel_layouts=stereo,adelay=${d}|${d},volume=1.8,apad=whole_dur=${dur.toFixed(2)}[vo]`);
-    filters.push(`[0:a]aformat=sample_rates=44100:channel_layouts=stereo,volume=${mv}[mu]`);
+    filters.push(`[${voiceIdx}:a]aformat=sample_rates=44100:channel_layouts=stereo,adelay=${d}|${d},volume=1.8,apad=whole_dur=${durSalida.toFixed(2)}[vo]`);
+    filters.push(`${refAudio.startsWith('[') ? refAudio : '[' + refAudio + ']'}aformat=sample_rates=44100:channel_layouts=stereo,volume=${mv}[mu]`);
     filters.push(`[mu][vo]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[aout]`);
     maps.push('-map', '[aout]');
     args.push('-c:a', 'aac', '-b:a', '192k');
@@ -1578,7 +1853,7 @@ async function exportVideo(clip) {
   args.push('-map', last === '0:v' ? '0:v' : `[${last}]`);
   args.push(...maps);
   args.push('-c:v', 'libx264', '-preset', 'veryfast', '-crf', '22', '-pix_fmt', 'yuv420p',
-    '-movflags', '+faststart', '-t', dur.toFixed(2), 'out.mp4');
+    '-movflags', '+faststart', '-t', durSalida.toFixed(2), 'out.mp4');
 
   await ffmpeg.exec(args);
   const data = await ffmpeg.readFile('out.mp4');
@@ -2326,7 +2601,12 @@ function medidasDeSalida(clip) {
 async function exportVideoLive(clip, report) {
   const { w: W, h: H } = medidasDeSalida(clip);
   const v = clip.media;
-  const dur = clip.dur;
+  const dur = clip.dur;                    // duración del original
+  const tramos = tramosDe(clip);           // partes que se conservan
+  const conCortes = hayCortes(clip);
+  const durSalida = duracionEditada(clip); // lo que va a durar el archivo
+  const arranca = tramos.length ? tramos[0].a : 0;
+  const termina = tramos.length ? tramos[tramos.length - 1].b : dur;
 
   try { v.pause(); } catch (e) { /* no estaba reproduciendo */ }
 
@@ -2366,6 +2646,8 @@ async function exportVideoLive(clip, report) {
   const conOriginal = !state.audio.mute && (mode === 'keep' || mode === 'mix' || !conVoz);
 
   let ac = null, voiceSrc = null, musicSrc = null, avisoSinAudio = false;
+  // se guardan aparte porque al saltar un corte hay que volver a arrancarlos
+  let musicBuf = null, voiceBuf = null, gMusica = null, gVoz = null;
 
   if (!state.audio.mute && (conVoz || conOriginal) && audioCtx && audioCtx.state === 'running') {
     ac = audioCtx;
@@ -2391,29 +2673,31 @@ async function exportVideoLive(clip, report) {
 
       if (conOriginal) {
         try {
-          const buf = await decodificar(clip.file, '_audioBuf');
+          musicBuf = await decodificar(clip.file, '_audioBuf');
+          gMusica = ac.createGain();
+          gMusica.gain.value = (mode === 'mix' && conVoz) ? state.audio.musicVol / 100 : 1;
+          gMusica.connect(dest);
           musicSrc = ac.createBufferSource();
-          musicSrc.buffer = buf;
-          const g = ac.createGain();
-          g.gain.value = (mode === 'mix' && conVoz) ? state.audio.musicVol / 100 : 1;
-          musicSrc.connect(g); g.connect(dest);
+          musicSrc.buffer = musicBuf;
+          musicSrc.connect(gMusica);
           algo = true;
         } catch (e) {
-          musicSrc = null;
+          musicSrc = null; musicBuf = null;
           avisoSinAudio = true;   // sin pista de audio legible en ese archivo
         }
       }
 
       if (conVoz) {
         try {
-          const buf = await decodificar(clip.voice, null);
+          voiceBuf = await decodificar(clip.voice, null);
+          gVoz = ac.createGain();
+          gVoz.gain.value = 1;
+          gVoz.connect(dest);
           voiceSrc = ac.createBufferSource();
-          voiceSrc.buffer = buf;
-          const g = ac.createGain();
-          g.gain.value = 1;
-          voiceSrc.connect(g); g.connect(dest);
+          voiceSrc.buffer = voiceBuf;
+          voiceSrc.connect(gVoz);
           algo = true;
-        } catch (e) { voiceSrc = null; }
+        } catch (e) { voiceSrc = null; voiceBuf = null; }
       }
 
       if (algo) dest.stream.getAudioTracks().forEach(t => stream.addTrack(t));
@@ -2440,6 +2724,8 @@ async function exportVideoLive(clip, report) {
   const grabado = new Promise(r => { rec.onstop = r; });
 
   let dibujando = true;
+  let grabando = false;   // recién en true tras rec.start(): sin esto, el
+                          // precalentamiento dispararía los saltos de corte
   let cuadros = 0;
   let rafId = null;
   let wake = null;
@@ -2492,6 +2778,66 @@ async function exportVideoLive(clip, report) {
     } catch (e) { /* un cuadro perdido no rompe nada */ }
   };
 
+  /* ---- saltar las partes cortadas ---- */
+  // Al llegar al final de una parte que se conserva, se pausa el grabador, se
+  // salta a la siguiente y se reanuda. Como el grabador queda en pausa
+  // durante el salto, en el archivo las partes quedan pegadas sin huecos.
+  const puedePausar = typeof rec.pause === 'function' && typeof rec.resume === 'function';
+  let idxTramo = 0;
+  let saltando = false;
+
+  /** Vuelve a arrancar el audio desde el punto al que se saltó. */
+  const reengancharAudio = (inicioFuente) => {
+    if (!ac) return;
+    const cuando = ac.currentTime + 0.02;
+    if (musicBuf && gMusica) {
+      try { if (musicSrc) musicSrc.stop(); } catch (e) { /* ya estaba parado */ }
+      musicSrc = ac.createBufferSource();
+      musicSrc.buffer = musicBuf;
+      musicSrc.connect(gMusica);
+      try { musicSrc.start(cuando, Math.min(inicioFuente, musicBuf.duration)); }
+      catch (e) { musicSrc = null; }
+    }
+    if (voiceBuf && gVoz) {
+      // la voz corre en tiempo del RESULTADO: se retoma donde iba
+      const enSalida = Math.max(0, aSalida(clip, inicioFuente) - state.audio.voiceDelay);
+      try { if (voiceSrc) voiceSrc.stop(); } catch (e) { /* ya estaba parado */ }
+      if (enSalida < voiceBuf.duration) {
+        voiceSrc = ac.createBufferSource();
+        voiceSrc.buffer = voiceBuf;
+        voiceSrc.connect(gVoz);
+        try { voiceSrc.start(cuando, enSalida); } catch (e) { voiceSrc = null; }
+      } else {
+        voiceSrc = null;   // la voz ya se terminó
+      }
+    }
+  };
+
+  const revisarCorte = () => {
+    if (!conCortes || saltando || !dibujando || !grabando) return;
+    const actual = tramos[idxTramo];
+    if (!actual) return;
+    if (v.currentTime < actual.b - 0.02) return;
+
+    const siguiente = tramos[idxTramo + 1];
+    if (!siguiente) return;   // era la última parte: del final se ocupa el vigilante
+
+    saltando = true;
+    (async () => {
+      try {
+        if (puedePausar && rec.state === 'recording') rec.pause();
+        try { v.pause(); } catch (e) { /* ya estaba en pausa */ }
+        await seekTo(v, siguiente.a);
+        idxTramo++;
+        pintarUno();                 // el primer cuadro del pedazo nuevo, ya listo
+        reengancharAudio(siguiente.a);
+        await v.play();
+        if (puedePausar && rec.state === 'paused') rec.resume();
+      } catch (e) { /* si algo falla, se sigue grabando de corrido */ }
+      saltando = false;
+    })();
+  };
+
   // Motor de dibujo, atado al refresco de la pantalla. Se pinta más seguido
   // que la captura (30 por segundo) para que nunca encuentre el lienzo viejo:
   // si un dibujo se demora, el navegador reusa el anterior en vez de dejar un
@@ -2500,6 +2846,7 @@ async function exportVideoLive(clip, report) {
   const bucle = () => {
     if (!dibujando) return;
     pintarUno();
+    revisarCorte();
     rafId = requestAnimationFrame(bucle);
   };
 
@@ -2521,7 +2868,7 @@ async function exportVideoLive(clip, report) {
   // decodificador arrancando, el lienzo estrenándose y el código
   // compilándose, todo mientras ya se estaba grabando. Así que primero se
   // reproduce un momento en vano, y recién con todo caliente se graba.
-  await seekTo(v, 0);
+  await seekTo(v, arranca);
   for (let i = 0; i < 5; i++) pintarUno();   // compila el pintado
   try {
     await v.play();
@@ -2532,13 +2879,13 @@ async function exportVideoLive(clip, report) {
     }
     v.pause();
   } catch (e) { /* si no dejó reproducir acá, se reintenta abajo */ }
-  await seekTo(v, 0);
+  await seekTo(v, arranca);
   pintarUno();          // primer cuadro para que el archivo no empiece en negro
   rafId = requestAnimationFrame(bucle);
   cuadros = 0;          // lo de recién no cuenta: todavía no se grababa
 
   const abortar = async (msg) => {
-    dibujando = false;
+    dibujando = false; grabando = false;
     if (rafId) cancelAnimationFrame(rafId);
     if (vigilante) { clearInterval(vigilante); vigilante = null; }
     try { v.pause(); } catch (e) { /* ya detenido */ }
@@ -2561,6 +2908,8 @@ async function exportVideoLive(clip, report) {
   // Sin trocear: cada volcado de datos frenaba un instante al grabador y ahí
   // se perdía un cuadro. Al parar se entrega todo junto igual.
   rec.start();
+  grabando = true;
+  idxTramo = 0;
 
   if (ac) {
     const t0 = ac.currentTime + 0.03;
@@ -2576,11 +2925,11 @@ async function exportVideoLive(clip, report) {
   const motivo = await new Promise(resolve => {
     const tic = setInterval(() => {
       const t = v.currentTime;
-      if (report && dur) report('Armando el archivo…', Math.min(0.98, t / dur));
+      if (report && durSalida) report('Armando el archivo…', Math.min(0.98, aSalida(clip, t) / durSalida));
 
       if (t > ultimoT + 0.02) { ultimoT = t; ultimoAvance = Date.now(); }
 
-      if (v.ended || (dur && t >= dur - 0.08)) { clearInterval(tic); resolve(null); }
+      if (v.ended || (termina && t >= termina - 0.08)) { clearInterval(tic); resolve(null); }
       else if (Date.now() - ultimoAvance > 8000) { clearInterval(tic); resolve('atascado'); }
       else if (Date.now() - arranque > limiteTotal) { clearInterval(tic); resolve('lento'); }
     }, 250);
@@ -2592,8 +2941,13 @@ async function exportVideoLive(clip, report) {
   }
   // si se atascó a mitad de camino, igual guardamos lo grabado hasta ahí
 
-  await new Promise(r => setTimeout(r, 400));   // el último trozo
-  dibujando = false;
+  // Se deja entrar el último cuadro y enseguida se pausa el grabador: la
+  // espera que viene después no debe quedar grabada como cola congelada.
+  await new Promise(r => setTimeout(r, 130));
+  if (puedePausar && rec.state === 'recording') {
+    try { rec.pause(); } catch (e) { /* se para igual más abajo */ }
+  }
+  dibujando = false; grabando = false;
   if (rafId) cancelAnimationFrame(rafId);
   if (vigilante) { clearInterval(vigilante); vigilante = null; }
   try { v.pause(); } catch (e) { /* ya estaba detenido */ }
@@ -2609,7 +2963,7 @@ async function exportVideoLive(clip, report) {
   // de 30; por debajo de 18 el resultado ya se nota entrecortado
   // Se guarda para poder mostrarlo: si el video sale trabado, este número dice
   // si fue el teléfono que no alcanzó a dibujar o si el problema es otro.
-  const fps = dur ? cuadros / dur : 60;
+  const fps = durSalida ? cuadros / durSalida : 60;
   // el archivo se graba a 30 como mucho; se informa lo que realmente quedó
   ultimoFpsExport = Math.min(30, Math.round(fps));
   if (fps < 20) {

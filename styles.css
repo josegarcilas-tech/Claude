@@ -91,6 +91,38 @@ body{
 .playbtn svg{width:20px;height:20px;fill:currentColor;stroke:none}
 .playbtn:active:not(:disabled){filter:brightness(1.25)}
 .playbtn:disabled{opacity:.4;cursor:default}
+
+/* ---------------- línea de tiempo ---------------- */
+.tl{margin:12px auto 0;max-width:520px}
+.tl-track{
+  position:relative;display:flex;gap:2px;height:44px;
+  background:var(--canvas);border:1px solid var(--edge-soft);
+  border-radius:9px;padding:3px;overflow:hidden;touch-action:none;
+}
+.tl-part{
+  position:relative;min-width:6px;border-radius:6px;cursor:pointer;
+  background:linear-gradient(180deg,var(--surface-2),var(--surface));
+  border:1.5px solid transparent;overflow:hidden;
+  display:flex;align-items:center;justify-content:center;
+}
+.tl-part.sel{border-color:var(--amber)}
+.tl-part span{
+  font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--ink-dim);
+  pointer-events:none;white-space:nowrap;
+}
+.tl-head{
+  position:absolute;top:0;bottom:0;width:2px;background:var(--amber);
+  border-radius:2px;pointer-events:none;z-index:2;box-shadow:0 0 0 1px rgba(21,12,43,.6);
+}
+.tl-tools{display:flex;gap:7px;margin-top:9px}
+.tl-tools .btn{flex:1;margin-top:0}
+.tl-info{
+  font-family:'JetBrains Mono',monospace;font-size:10.5px;
+  color:var(--ink-faint);margin:8px 0 0;text-align:center;
+}
+@media (min-width:900px){
+  .tl-track{height:38px}
+}
 .tc{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--ink-dim);min-width:52px;text-align:right}
 
 /* ---------------- layout ---------------- */
