@@ -470,9 +470,19 @@ function drawSubtitle(ctx, rawText, W, H, yPct) {
 const _blurA = document.createElement('canvas');
 const _blurB = document.createElement('canvas');
 
+/**
+ * "Solo el texto" y "Fondo detrás de la traducción" comparten la misma
+ * limpieza del original: solo se toca la silueta de sus letras. La
+ * diferencia es que en "box" además se dibuja una placa detrás del texto
+ * nuevo (en drawSubtitle), donde sea que el usuario la haya movido — así
+ * el original queda tapado sin importar dónde termine yendo la traducción.
+ */
+function coverUsesMask() {
+  return state.cover.mode === 'text' || state.cover.mode === 'box';
+}
+
 function drawCover(ctx, media, W, H, clip, t) {
   if (!state.cover.on) return;
-  if (state.cover.mode === 'box') return; // el tapado va pegado al texto: lo dibuja drawSubtitle
   const y = Math.round((state.cover.y / 100) * H);
   const h = Math.round((state.cover.h / 100) * H);
   if (h <= 0) return;
@@ -483,9 +493,8 @@ function drawCover(ctx, media, W, H, clip, t) {
     return;
   }
 
-  // modo "solo el texto": se difumina únicamente la silueta de las letras
-  const mask = state.cover.mode === 'text' ? mascaraEn(clip, t) : null;
-  if (state.cover.mode === 'text' && !mask) return;   // sin silueta no se toca nada
+  const mask = coverUsesMask() ? mascaraEn(clip, t) : null;
+  if (coverUsesMask() && !mask) return;   // sin silueta no se toca nada
 
   // Difuminado por reducción en dos pasadas: se achica muchísimo la franja
   // y se vuelve a estirar. Safari no soporta ctx.filter, así que el
@@ -766,7 +775,7 @@ function renderStage() {
   paint();
   if (!busy) {
     quickBand(clip);
-    if (state.cover.on && state.cover.mode === 'text' &&
+    if (state.cover.on && coverUsesMask() &&
         clip._maskSig !== firmaDeCues(clip) && clip.cues.some(c => c.text.trim())) {
       prepararMascaras(clip).then(() => { if (currentClip() === clip) paint(); });
     }
@@ -807,6 +816,7 @@ function renderCues() {
 
   clip.cues.forEach((cue, i) => {
     const active = clip.isVideo && clip.time >= cue.start && clip.time <= cue.end;
+    const curY = cue.y != null ? cue.y : state.style.y;
     const li = document.createElement('li');
     li.className = 'cue' + (active ? ' active' : '');
     li.innerHTML = `
@@ -818,6 +828,11 @@ function renderCues() {
           <input class="cue-time" type="text" value="${cue.end.toFixed(2)}" data-k="end" aria-label="Hasta">
         ` : '<span class="cue-arrow">texto fijo</span>'}
         <button class="cue-del" type="button" aria-label="Quitar línea">×</button>
+      </div>
+      <div class="cue-pos">
+        <span>Posición vertical <em class="cue-posv">${curY.toFixed(1)}%</em></span>
+        <input type="range" class="cue-y" min="0" max="94" step="0.5" value="${curY}" aria-label="Posición vertical de esta línea">
+        <button class="cue-posreset" type="button" title="Usar la altura general de la pestaña Letra">↺</button>
       </div>
       <textarea placeholder="Escribí el texto en español…">${esc(cue.text)}</textarea>`;
 
@@ -833,6 +848,18 @@ function renderCues() {
         if (!isNaN(v)) cue[e.target.dataset.k] = Math.max(0, Math.min(clip.dur, v));
         renderCues(); paint();
       });
+    });
+
+    const yRange = li.querySelector('.cue-y');
+    const yLabel = li.querySelector('.cue-posv');
+    yRange.addEventListener('input', e => {
+      cue.y = parseFloat(e.target.value);
+      yLabel.textContent = cue.y.toFixed(1) + '%';
+      paint();
+    });
+    li.querySelector('.cue-posreset').addEventListener('click', () => {
+      cue.y = null;
+      renderCues(); paint();
     });
     li.querySelector('.cue-n').addEventListener('click', () => {
       if (!clip.isVideo) return;
@@ -1155,7 +1182,7 @@ function canvasToBytes(canvas) {
 /* ---------------- exportar una imagen ---------------- */
 
 async function exportImage(clip) {
-  if (state.cover.on && state.cover.mode === 'text') await prepararMascaras(clip);
+  if (state.cover.on && coverUsesMask()) await prepararMascaras(clip);
   const W = clip.w, H = clip.h;
   const c = document.createElement('canvas');
   c.width = W; c.height = H;
@@ -1867,7 +1894,7 @@ async function autoPrepare(clip, report) {
     }))
     .sort((a, b) => a.start - b.start || a.y - b.y);
 
-  if (state.cover.on && state.cover.mode === 'text') {
+  if (state.cover.on && coverUsesMask()) {
     report('Recortando el texto original…', 0.7);
     await prepararMascaras(clip);
   }
@@ -1996,7 +2023,7 @@ async function exportVideoLive(clip, report) {
 
   try { v.pause(); } catch (e) { /* no estaba reproduciendo */ }
 
-  if (state.cover.on && state.cover.mode === 'text') {
+  if (state.cover.on && coverUsesMask()) {
     if (report) report('Ubicando el texto original…', 0.02);
     await prepararMascaras(clip);
   }
