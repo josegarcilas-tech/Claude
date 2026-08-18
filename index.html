@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,400;0,600;0,700;0,800;0,900;1,700&family=Poppins:wght@400;600;800&family=Inter:wght@400;600;800&family=Bebas+Neue&family=Anton&family=Archivo+Black&family=Oswald:wght@500;700&family=Nunito:wght@700;900&family=Playfair+Display:wght@700;900&family=Permanent+Marker&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="./styles.css?v=19">
+<link rel="stylesheet" href="./styles.css?v=20">
 </head>
 <body data-tab="lote">
 
@@ -107,12 +107,13 @@
             <span>Modo</span>
             <select id="coverMode">
               <option value="text" selected>Solo el texto</option>
+              <option value="box">Fondo detrás de la traducción</option>
               <option value="blur">Franja difuminada</option>
               <option value="solid">Barra sólida</option>
             </select>
           </label>
           <label class="field">
-            <span>Color de la barra</span>
+            <span>Color de tapado</span>
             <input type="color" id="coverColor" value="#120a26">
           </label>
           <label class="field">
@@ -127,8 +128,20 @@
             <span>Fuerza del difuminado <em id="coverSv">7</em></span>
             <input type="range" id="coverStrength" min="2" max="10" value="7" step="1">
           </label>
+          <label class="field">
+            <span>Opacidad del fondo <em id="coverBoxOpacityv">95%</em></span>
+            <input type="range" id="coverBoxOpacity" min="20" max="100" value="95" step="1">
+          </label>
+          <label class="field">
+            <span>Esquinas redondeadas <em id="coverBoxRadiusv">22%</em></span>
+            <input type="range" id="coverBoxRadius" min="0" max="50" value="22" step="1">
+          </label>
+          <label class="field">
+            <span>Ancho mínimo <em id="coverBoxMinWv">0%</em></span>
+            <input type="range" id="coverBoxMinW" min="0" max="100" value="0" step="1">
+          </label>
         </div>
-        <p class="hint"><strong>Solo el texto</strong> borra únicamente las letras originales y deja el resto del video intacto. La franja de abajo marca dónde buscarlas, no se dibuja.</p>
+        <p class="hint"><strong>Solo el texto</strong> borra únicamente las letras originales y deja el resto del video intacto. <strong>Fondo detrás de la traducción</strong> pone una placa del tamaño del texto nuevo justo donde estaba el original, tapándolo. La franja de abajo marca dónde buscar el subtítulo, no siempre se dibuja.</p>
       </div>
     </div>
   </section>
@@ -221,8 +234,10 @@
           <select id="logoPos">
             <option value="br" selected>Abajo derecha</option>
             <option value="bl">Abajo izquierda</option>
+            <option value="bc">Centro abajo</option>
             <option value="tr">Arriba derecha</option>
             <option value="tl">Arriba izquierda</option>
+            <option value="tc">Centro arriba</option>
           </select>
         </label>
         <label class="field">
@@ -329,6 +344,6 @@
 <script src="https://unpkg.com/@ffmpeg/util@0.12.1/dist/umd/index.js"></script>
 <script src="https://unpkg.com/jszip@3.10.1/dist/jszip.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.1.1/dist/tesseract.min.js"></script>
-<script src="./app.js?v=19"></script>
+<script src="./app.js?v=20"></script>
 </body>
 </html>

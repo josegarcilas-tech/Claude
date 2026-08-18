@@ -22,7 +22,7 @@ const state = {
     y: 16,          // % del alto (borde superior del bloque)
     maxW: 86        // % del ancho
   },
-  cover: { on: true, mode: 'text', color: '#120a26', strength: 9, y: 14, h: 12, zones: null },
+  cover: { on: true, mode: 'text', color: '#120a26', strength: 9, y: 14, h: 12, zones: null, boxOpacity: 95, boxRadius: 22, boxMinW: 0 },
   audio: { mode: 'keep', mute: false, musicVol: 28, voiceDelay: 0.5 },
   logo: { on: false, file: null, img: null, opacity: 70, size: 16, margin: 4, pos: 'br' },
   zip: true
@@ -371,6 +371,22 @@ function wrapLines(ctx, text, maxPx) {
   return out;
 }
 
+/** Trazo de un rectángulo con esquinas redondeadas, a mano (Safari viejo no tiene ctx.roundRect). */
+function roundRectPath(ctx, x, y, w, h, r) {
+  const rr = Math.max(0, Math.min(r, w / 2, h / 2));
+  ctx.beginPath();
+  ctx.moveTo(x + rr, y);
+  ctx.lineTo(x + w - rr, y);
+  ctx.arcTo(x + w, y, x + w, y + rr, rr);
+  ctx.lineTo(x + w, y + h - rr);
+  ctx.arcTo(x + w, y + h, x + w - rr, y + h, rr);
+  ctx.lineTo(x + rr, y + h);
+  ctx.arcTo(x, y + h, x, y + h - rr, rr);
+  ctx.lineTo(x, y + rr);
+  ctx.arcTo(x, y, x + rr, y, rr);
+  ctx.closePath();
+}
+
 /** Dibuja el bloque de subtítulo. Devuelve la caja usada. */
 function drawSubtitle(ctx, rawText, W, H, yPct) {
   const s = state.style;
@@ -396,6 +412,32 @@ function drawSubtitle(ctx, rawText, W, H, yPct) {
   let widest = 0;
   lines.forEach(l => { widest = Math.max(widest, ctx.measureText(l).width); });
 
+  let boxRect = null;
+
+  // Fondo pegado al texto: en vez de borrar o difuminar el subtítulo
+  // original, se tapa con una placa detrás de la traducción. Como la
+  // placa es opaca y va en el mismo lugar, cubre el original de paso.
+  if (state.cover.on && state.cover.mode === 'box') {
+    const c = state.cover;
+    const padX = px * 0.62;
+    const padY = px * 0.34;
+    const minW = Math.min(W, (c.boxMinW / 100) * W);
+    const boxW = Math.max(widest + padX * 2, minW);
+    const boxH = lines.length * lineH + padY * 2;
+    const boxX = cx - boxW / 2;
+    const boxY = top - padY;
+    const radius = Math.min(boxW, boxH) * 0.5 * (c.boxRadius / 100);
+
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, Math.min(1, c.boxOpacity / 100));
+    ctx.fillStyle = c.color;
+    roundRectPath(ctx, boxX, boxY, boxW, boxH, radius);
+    ctx.fill();
+    ctx.restore();
+
+    boxRect = { x: boxX, y: boxY, w: boxW, h: boxH };
+  }
+
   lines.forEach((line, i) => {
     const y = top + px * 0.96 + i * lineH;
     if (strokePx > 0) {
@@ -406,6 +448,15 @@ function drawSubtitle(ctx, rawText, W, H, yPct) {
     ctx.fillStyle = s.fill;
     ctx.fillText(line, cx, y);
   });
+
+  if (boxRect) {
+    return {
+      x: Math.max(0, Math.floor(boxRect.x)),
+      y: Math.max(0, Math.floor(boxRect.y)),
+      w: Math.min(W, Math.ceil(boxRect.w)),
+      h: Math.min(H, Math.ceil(boxRect.h))
+    };
+  }
 
   const pad = strokePx + px * 0.3;
   return {
@@ -421,6 +472,7 @@ const _blurB = document.createElement('canvas');
 
 function drawCover(ctx, media, W, H, clip, t) {
   if (!state.cover.on) return;
+  if (state.cover.mode === 'box') return; // el tapado va pegado al texto: lo dibuja drawSubtitle
   const y = Math.round((state.cover.y / 100) * H);
   const h = Math.round((state.cover.h / 100) * H);
   if (h <= 0) return;
@@ -508,6 +560,8 @@ function logoBox(W, H) {
     case 'tl': x = margin; y = margin; break;
     case 'tr': x = W - targetW - margin; y = margin; break;
     case 'bl': x = margin; y = H - targetH - margin; break;
+    case 'tc': x = (W - targetW) / 2; y = margin; break;
+    case 'bc': x = (W - targetW) / 2; y = H - targetH - margin; break;
     default: x = W - targetW - margin; y = H - targetH - margin; // br
   }
   return { x: Math.round(x), y: Math.round(y), w: targetW, h: targetH };
@@ -1004,6 +1058,9 @@ bind('coverH', 'cover.h', { num: 1, label: 'coverHv', fmt: pct });
   state.clips.forEach(c => { c._masks = null; c._maskSig = null; });
 }));
 bind('coverStrength', 'cover.strength', { num: 1, label: 'coverSv' });
+bind('coverBoxOpacity', 'cover.boxOpacity', { num: 1, label: 'coverBoxOpacityv', fmt: pct });
+bind('coverBoxRadius', 'cover.boxRadius', { num: 1, label: 'coverBoxRadiusv', fmt: pct });
+bind('coverBoxMinW', 'cover.boxMinW', { num: 1, label: 'coverBoxMinWv', fmt: pct });
 
 bind('logoOn', 'logo.on');
 bind('logoPos', 'logo.pos');
