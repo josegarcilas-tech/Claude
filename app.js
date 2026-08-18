@@ -509,6 +509,15 @@ function drawCover(ctx, media, W, H, clip, t) {
   const mask = coverUsesMask() ? mascaraEn(clip, t) : null;
   if (coverUsesMask() && !mask) return;   // sin silueta no se toca nada
 
+  // El lienzo puede ser más chico que el video (en el celular se exporta
+  // topado). Los recortes se toman en píxeles del ORIGEN, así que se
+  // convierten; si coinciden, la escala es 1 y no cambia nada.
+  const anchoOrigen = media.videoWidth || media.naturalWidth || W;
+  const altoOrigen = media.videoHeight || media.naturalHeight || H;
+  const esc = altoOrigen / H;
+  const yOrigen = y * esc;
+  const hOrigen = h * esc;
+
   // Difuminado por reducción en dos pasadas: se achica muchísimo la franja
   // y se vuelve a estirar. Safari no soporta ctx.filter, así que el
   // desenfoque se hace a mano. Cuanta más reducción, menos se lee el texto.
@@ -526,7 +535,7 @@ function drawCover(ctx, media, W, H, clip, t) {
     const ca = _blurA.getContext('2d');
     ca.imageSmoothingEnabled = true;
     ca.imageSmoothingQuality = 'high';
-    ca.drawImage(media, 0, y, W, h, 0, 0, w1, h1);
+    ca.drawImage(media, 0, yOrigen, anchoOrigen, hOrigen, 0, 0, w1, h1);
 
     _blurB.width = w2; _blurB.height = h2;
     const cb = _blurB.getContext('2d');
@@ -552,7 +561,8 @@ function drawCover(ctx, media, W, H, clip, t) {
       pc.imageSmoothingQuality = 'high';
       pc.drawImage(_blurA, 0, 0, w1, h1, 0, 0, W, h);
       pc.globalCompositeOperation = 'destination-in';
-      pc.drawImage(mask, 0, y, W, h, 0, 0, W, h);
+      // la silueta se calculó al tamaño del video, no del lienzo
+      pc.drawImage(mask, 0, y * (mask.height / H), mask.width, h * (mask.height / H), 0, 0, W, h);
       pc.globalCompositeOperation = 'source-over';
       ctx.drawImage(_patch, 0, y);
     } else {
@@ -1382,8 +1392,10 @@ function setBar(frac, text) {
 /* ---------------- construcción de superposiciones ---------------- */
 
 /** PNG recortado con el texto de una línea + su posición. */
-function cueOverlay(clip, cue) {
-  const W = clip.w, H = clip.h;
+function cueOverlay(clip, cue, anchoSalida, altoSalida) {
+  // se dibuja directo al tamaño final: si el video se exporta más chico, las
+  // letras salen nítidas en vez de achicadas después
+  const W = anchoSalida || clip.w, H = altoSalida || clip.h;
   const c = document.createElement('canvas');
   c.width = W; c.height = H;
   const cx = c.getContext('2d');
@@ -2245,8 +2257,25 @@ function recorderMime() {
   return '';
 }
 
+/**
+ * Lado largo máximo al grabar en el teléfono. Un cuadro de 1080x1920 son dos
+ * millones de píxeles que hay que copiar Y comprimir treinta veces por
+ * segundo; medido en un iPhone, ahí solo salían 14 cuadros por segundo. A
+ * 1280 de lado largo es menos de la mitad de trabajo y el video sale parejo.
+ * Para TikTok/Reels 720x1280 es tamaño de sobra: lo reencodifican igual.
+ */
+const LADO_MAX_MOVIL = 1280;
+
 async function exportVideoLive(clip, report) {
-  const W = clip.w, H = clip.h;
+  // resolución de trabajo: se topa para que el teléfono no se ahogue
+  let W = clip.w, H = clip.h;
+  const ladoLargo = Math.max(W, H);
+  if (ladoLargo > LADO_MAX_MOVIL) {
+    const k = LADO_MAX_MOVIL / ladoLargo;
+    // pares: H.264 no acepta dimensiones impares
+    W = Math.max(2, Math.round(W * k / 2) * 2);
+    H = Math.max(2, Math.round(H * k / 2) * 2);
+  }
   const v = clip.media;
   const dur = clip.dur;
 
@@ -2346,9 +2375,13 @@ async function exportVideoLive(clip, report) {
   }
 
   // ---- grabación ----
+  // ritmo de datos acorde al tamaño: pedirle 6 Mbps a un cuadro chico solo
+  // le da trabajo de más al codificador sin que se vea mejor
+  const bits = Math.min(8000000, Math.max(3500000, Math.round(W * H * 30 * 0.12)));
+
   let rec;
   try {
-    rec = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 6000000 });
+    rec = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: bits });
   } catch (e) {
     try { rec = new MediaRecorder(stream); }
     catch (e2) { cv.remove(); throw new Error('Este navegador no dejó iniciar la grabación del video.'); }
@@ -2369,7 +2402,7 @@ async function exportVideoLive(clip, report) {
   const capasTexto = [];
   for (const cue of clip.cues) {
     if (!cue.text.trim()) continue;
-    const ov = cueOverlay(clip, cue);
+    const ov = cueOverlay(clip, cue, W, H);
     if (!ov) continue;
     // mismo criterio que el motor de escritorio: sin "hasta" válido, hasta el final
     capasTexto.push({
@@ -2392,7 +2425,12 @@ async function exportVideoLive(clip, report) {
     }
   }
 
+  let ultimoPintado = 0;
+
   const pintarUno = () => {
+    // se marca al EMPEZAR: si se marcara al terminar, el tiempo que tarda el
+    // dibujo se sumaría al límite de abajo y el ritmo caería solo
+    ultimoPintado = performance.now();
     try {
       const t = v.currentTime;
       cx.drawImage(v, 0, 0, W, H);
@@ -2405,15 +2443,24 @@ async function exportVideoLive(clip, report) {
     } catch (e) { /* un cuadro perdido no rompe nada */ }
   };
 
-  // Un solo motor de dibujo, atado al refresco de la pantalla. Antes convivían
-  // un setInterval(33) y requestVideoFrameCallback: pintaban el doble y a
-  // destiempo, y como la captura va a 30 fijos, unas veces tomaba el cuadro
-  // repetido y otras se lo perdía. De ahí el tironeo.
+  // Motor de dibujo, atado al refresco de la pantalla. Se pinta más seguido
+  // que la captura (30 por segundo) para que nunca encuentre el lienzo viejo:
+  // si un dibujo se demora, el navegador reusa el anterior en vez de dejar un
+  // hueco. Probado con captura a demanda (requestFrame) y limitando a 30: bajo
+  // carga rendía peor, porque cada dibujo demorado se perdía como cuadro.
   const bucle = () => {
     if (!dibujando) return;
     pintarUno();
     rafId = requestAnimationFrame(bucle);
   };
+
+  // Red de seguridad: si el refresco se frena (la pantalla se atenúa, el
+  // sistema baja la prioridad de la pestaña), el dibujo se detiene y el
+  // archivo queda con un cuadro congelado de varios segundos. Este vigilante
+  // pinta igual cuando pasó demasiado tiempo sin dibujar nada.
+  let vigilante = setInterval(() => {
+    if (dibujando && performance.now() - ultimoPintado > 120) pintarUno();
+  }, 100);
 
   try {
     if (navigator.wakeLock) wake = await navigator.wakeLock.request('screen');
@@ -2426,6 +2473,7 @@ async function exportVideoLive(clip, report) {
   const abortar = async (msg) => {
     dibujando = false;
     if (rafId) cancelAnimationFrame(rafId);
+    if (vigilante) { clearInterval(vigilante); vigilante = null; }
     try { v.pause(); } catch (e) { /* ya detenido */ }
     try { rec.stop(); } catch (e) { /* ya detenido */ }
     await Promise.race([grabado, new Promise(r => setTimeout(r, 3000))]);
@@ -2480,6 +2528,7 @@ async function exportVideoLive(clip, report) {
   await new Promise(r => setTimeout(r, 400));   // el último trozo
   dibujando = false;
   if (rafId) cancelAnimationFrame(rafId);
+  if (vigilante) { clearInterval(vigilante); vigilante = null; }
   try { v.pause(); } catch (e) { /* ya estaba detenido */ }
   if (voiceSrc) { try { voiceSrc.stop(); } catch (e) { /* ya terminó */ } }
   if (musicSrc) { try { musicSrc.stop(); } catch (e) { /* ya terminó */ } }
