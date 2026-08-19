@@ -36,8 +36,10 @@ form.addEventListener('submit', async (event) => {
       throw new Error(data.error || 'No se pudo procesar la URL.');
     }
 
+    // La descarga pasa por nuestro proxy: <a download> se ignora si el
+    // archivo viene de otro origen, como el CDN de Instagram.
     preview.src = data.videoUrl;
-    downloadLink.href = data.videoUrl;
+    downloadLink.href = `/api/download?url=${encodeURIComponent(data.videoUrl)}`;
     resultTitle.textContent = data.title || '';
     resultEl.hidden = false;
     setStatus('', null);
