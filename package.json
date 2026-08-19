@@ -1,0 +1,16 @@
+{
+  "name": "instasaver",
+  "version": "1.0.0",
+  "description": "Descarga videos publicos de Instagram (Reels, Posts, IGTV) a partir de su URL.",
+  "main": "server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "cheerio": "^1.0.0",
+    "express": "^4.21.2"
+  }
+}

@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>InstaSaver — Descarga videos de Instagram</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <main class="card">
+    <h1>InstaSaver</h1>
+    <p class="subtitle">Pega el enlace de un Reel, Post o IGTV publico de Instagram</p>
+
+    <form id="download-form">
+      <input
+        type="url"
+        id="url-input"
+        placeholder="https://www.instagram.com/reel/..."
+        required
+      />
+      <button type="submit" id="submit-btn">Buscar video</button>
+    </form>
+
+    <div id="status" class="status" hidden></div>
+
+    <div id="result" class="result" hidden>
+      <video id="preview" controls></video>
+      <p id="result-title"></p>
+      <a id="download-link" download target="_blank" rel="noopener">
+        Descargar video
+      </a>
+    </div>
+
+    <p class="disclaimer">
+      Usa esta herramienta solo con contenido propio o con permiso del autor.
+      Respeta los derechos de autor y las condiciones de uso de Instagram.
+    </p>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
