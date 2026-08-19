@@ -12,7 +12,7 @@ App web para descargar videos publicos de Instagram (Reels, Posts, IGTV) a parti
 
 - Node.js 18 o superior (usa `fetch` nativo).
 
-## Instalacion y uso
+## Instalacion y uso (local)
 
 ```bash
 npm install
@@ -20,6 +20,29 @@ npm start
 ```
 
 Luego abre `http://localhost:3000` en el navegador.
+
+## Deploy en Netlify
+
+El proyecto ya incluye `netlify.toml` y una Netlify Function (`netlify/functions/resolve.js`)
+que reemplaza al servidor Express en produccion. El sitio estatico se sirve desde `public/`.
+
+**Opcion recomendada — Netlify CLI:**
+
+```bash
+npm install -g netlify-cli
+netlify deploy --prod
+```
+
+**Opcion — conectar el repo Git en el dashboard de Netlify:**
+
+1. Sube este proyecto a un repositorio Git (GitHub/GitLab/Bitbucket).
+2. En Netlify: "Add new site" → "Import an existing project" → selecciona el repo.
+3. Netlify detecta `netlify.toml` automaticamente (publish = `public`, functions = `netlify/functions`). No requiere build command.
+4. Deploy.
+
+**Nota sobre "drag and drop":** si arrastras la carpeta directamente en el dashboard de Netlify
+(deploy manual sin CLI ni Git), las Netlify Functions y `netlify.toml` no siempre se procesan igual.
+Para que el backend (`/api/resolve`) funcione de forma confiable, usa Netlify CLI o un deploy conectado a Git.
 
 ## Limitaciones
 
