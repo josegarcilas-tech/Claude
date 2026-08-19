@@ -123,6 +123,27 @@ document.addEventListener('drop', e => {
 
 const VIDEO_EXT = ['mp4', 'mov', 'webm', 'm4v', 'mkv', 'avi', '3gp', 'ogv'];
 const IMAGE_EXT = ['jpg', 'jpeg', 'png', 'webp', 'gif', 'bmp', 'avif', 'heic'];
+const AUDIO_EXT = ['mp3', 'm4a', 'wav', 'aac', 'ogg', 'oga', 'opus', 'flac', 'weba', 'caf', 'aiff', 'aif'];
+
+function extensionDe(file) {
+  const n = (file && file.name) || '';
+  return n.includes('.') ? n.split('.').pop().toLowerCase() : '';
+}
+
+/**
+ * Un archivo de audio, mirado con manga ancha. El tipo que declara el sistema
+ * no sirve solo: en el iPhone, un MP3 guardado en Archivos (por ejemplo el que
+ * baja ElevenLabs) llega muchas veces con el tipo vacío o como
+ * application/octet-stream, y entonces exigir que empiece con "audio/" lo
+ * rechazaba sin motivo.
+ */
+function esAudio(file) {
+  if (!file) return false;
+  const tipo = file.type || '';
+  if (tipo.startsWith('audio/')) return true;
+  if (AUDIO_EXT.includes(extensionDe(file))) return true;
+  return false;
+}
 
 function kindOf(file) {
   if (file.type.startsWith('video/')) return 'video';
@@ -1488,14 +1509,59 @@ voiceInput.addEventListener('change', e => {
   voiceDrop.addEventListener(ev, e => { e.preventDefault(); voiceDrop.classList.add('hot'); }));
 ['dragleave', 'drop'].forEach(ev =>
   voiceDrop.addEventListener(ev, e => { e.preventDefault(); voiceDrop.classList.remove('hot'); }));
-voiceDrop.addEventListener('drop', e => attachVoice(e.dataTransfer.files[0]));
+voiceDrop.addEventListener('drop', e => {
+  const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+  if (f) attachVoice(f);
+});
 
-function attachVoice(file) {
+/** ¿El navegador puede realmente abrir este archivo como audio? */
+function sePuedeOir(file) {
+  return new Promise(resolve => {
+    const url = URL.createObjectURL(file);
+    const a = new Audio();
+    let listo = false;
+    const cerrar = (ok) => {
+      if (listo) return;
+      listo = true;
+      clearTimeout(temporizador);
+      a.src = '';
+      URL.revokeObjectURL(url);
+      resolve(ok);
+    };
+    const temporizador = setTimeout(() => cerrar(false), 8000);
+    a.addEventListener('loadedmetadata', () => cerrar(true));
+    a.addEventListener('error', () => cerrar(false));
+    a.preload = 'metadata';
+    a.src = url;
+    a.load();
+  });
+}
+
+async function attachVoice(file) {
+  if (!file) return;
+
+  if (!state.clips.length) {
+    toast('Primero cargá un video, y después subí la voz.', true);
+    return;
+  }
+  // si no había ninguno elegido, se toma el primero en vez de rechazar
+  if (!currentClip()) { state.sel = 0; renderClipList(); renderStage(); }
   const clip = currentClip();
-  if (!clip) { toast('Primero elegí un archivo del lote.', true); return; }
-  if (!file || !file.type.startsWith('audio/')) { toast('Ese archivo no es audio.', true); return; }
+
+  // Si el sistema no dice que sea audio, en vez de rechazarlo de una se
+  // prueba a abrirlo: el tipo declarado falla seguido en el iPhone.
+  if (!esAudio(file)) {
+    const nombreCorto = file.name.length > 40 ? file.name.slice(0, 37) + '…' : file.name;
+    toast('Revisando ese archivo…');
+    if (!(await sePuedeOir(file))) {
+      toast(`No se pudo abrir "${nombreCorto}" como audio. Probá con un MP3, M4A o WAV.`, true);
+      return;
+    }
+  }
+
   clip.voice = file;
   updateVoiceBox(clip); renderClipList();
+  toast('Voz cargada. Elegí en "Qué se escucha" cómo va a sonar.');
 }
 
 function updateVoiceBox(clip) {
@@ -1809,9 +1875,14 @@ async function exportVideo(clip) {
   const mode = state.audio.mode;
   const hasVoice = !!clip.voice && !state.audio.mute;
   let voiceIdx = -1;
+  let nombreVoz = '';
   if ((mode === 'voice' || mode === 'mix') && hasVoice) {
-    const ext = (clip.voice.name.split('.').pop() || 'mp3').toLowerCase();
+    // sin extensión conocida, split('.') devolvía el nombre entero y armaba un
+    // archivo inválido para ffmpeg; mejor caer en mp3, que es lo habitual
+    const propia = extensionDe(clip.voice);
+    const ext = AUDIO_EXT.includes(propia) ? propia : 'mp3';
     const vName = `voice.${ext}`;
+    nombreVoz = vName;
     await ffmpeg.writeFile(vName, new Uint8Array(await clip.voice.arrayBuffer()));
     inputs.push('-i', vName);
     voiceIdx = idx; idx++;
@@ -1862,7 +1933,7 @@ async function exportVideo(clip) {
   const files = ['in.mp4', 'out.mp4'];
   for (let i = 0; i < n; i++) files.push(`cue${i}.png`);
   if (hasLogo) files.push('logo.png');
-  if (voiceIdx >= 0) files.push(`voice.${(clip.voice.name.split('.').pop() || 'mp3').toLowerCase()}`);
+  if (voiceIdx >= 0) files.push(nombreVoz);
   for (const f of files) { try { await ffmpeg.deleteFile(f); } catch (e) { /* ya no existe */ } }
 
   return { name: baseName(clip.file.name) + '-es.mp4', data: new Uint8Array(data.buffer || data) };
