@@ -81,6 +81,14 @@ bloquea de forma mucho mas agresiva: en lugar del post devuelve un muro de inici
 sin las etiquetas del video. Por eso es habitual que la misma app funcione en `localhost`
 y falle al desplegarla en Netlify, Vercel o cualquier otro hosting serverless.
 
+### Lo que ya hace la app por su cuenta
+
+`/api/resolve` esta servido por una **Edge Function** (`netlify/edge-functions/resolve.js`),
+que corre en la red de Deno Deploy en lugar de AWS. Son rangos de IP distintos y
+normalmente menos bloqueados que los de Lambda, asi que es el intento con mas
+posibilidades sin credenciales. No es una garantia: si Instagram tambien bloquea esa
+ruta, hay que pasar a una de las opciones de abajo.
+
 **Ninguna cantidad de codigo anonimo arregla esto de forma fiable.** Hay tres salidas:
 
 ### Opcion A — Ejecutarlo en local (sin configuracion, sin riesgos)
