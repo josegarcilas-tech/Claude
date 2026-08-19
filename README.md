@@ -5,7 +5,8 @@ App web para descargar videos publicos de Instagram (Reels, Posts, IGTV) a parti
 ## Como funciona
 
 1. El usuario pega la URL de un post publico de Instagram (`/p/`, `/reel/` o `/tv/`).
-2. El backend intenta obtener el video probando varias rutas publicas en cascada:
+2. El backend intenta obtener el video probando varias rutas en cascada:
+   - la API interna `api/v1/media/web_info` (la que usa la propia web de Instagram),
    - el endpoint `/embed/captioned/` (pensado para incrustar, suele responder sin sesion),
    - la pagina del post con un User-Agent de crawler de Meta (`facebookexternalhit`),
    - la pagina del post con un User-Agent de navegador.
@@ -72,7 +73,7 @@ Para que el backend (`/api/resolve`) funcione de forma confiable, usa Netlify CL
 
 ## Si ves "Instagram bloqueo la solicitud"
 
-Esta es la limitacion mas importante y **no se arregla del todo desde el codigo**.
+Esta es la limitacion mas importante del proyecto.
 
 Instagram distingue entre IPs residenciales (las de una casa) e IPs de centros de datos.
 Las Netlify Functions corren sobre AWS, es decir, IPs de centro de datos, que Instagram
@@ -80,20 +81,56 @@ bloquea de forma mucho mas agresiva: en lugar del post devuelve un muro de inici
 sin las etiquetas del video. Por eso es habitual que la misma app funcione en `localhost`
 y falle al desplegarla en Netlify, Vercel o cualquier otro hosting serverless.
 
-Las estrategias en cascada del punto 2 mejoran bastante la tasa de exito, pero ninguna
-la garantiza. Si necesitas fiabilidad real en produccion, las opciones son:
+**Ninguna cantidad de codigo anonimo arregla esto de forma fiable.** Hay tres salidas:
 
-1. **Ejecutarlo donde la IP sea residencial** — en tu propia maquina, o un mini servidor
-   en casa. Es lo que mejor funciona y no requiere cambios de codigo.
-2. **Usar la API oficial** — [Instagram Graph API](https://developers.facebook.com/docs/instagram-platform)
-   con un token de acceso. Es la via soportada y estable, pero solo da acceso a contenido
-   propio o de cuentas que te hayan autorizado.
-3. **Enrutar las peticiones por un proxy residencial** — servicio de pago, y conviene
-   revisar antes las condiciones de uso de Instagram.
+### Opcion A — Ejecutarlo en local (sin configuracion, sin riesgos)
 
-Servicios como savefrom.net sostienen esto con infraestructura de proxies rotativos y
-mantenimiento constante; replicar esa fiabilidad con una sola funcion serverless no es
-posible.
+```bash
+npm install && npm start
+```
+
+Tu conexion domestica es una IP residencial, que es justo lo que Instagram no bloquea.
+Es la opcion mas sencilla y la que mejor funciona. La pega: solo lo puedes usar desde
+esa maquina y mientras este encendida.
+
+### Opcion B — API oficial (soportada y estable)
+
+La [Instagram Graph API](https://developers.facebook.com/docs/instagram-platform) es la
+via legitima y no la bloquean. Requiere crear una app en Meta for Developers y obtener un
+token. La limitacion real es de alcance: solo da acceso a tu propio contenido o al de
+cuentas que te hayan autorizado explicitamente, no a cualquier post publico.
+
+### Opcion C — Cookie de sesion (`IG_SESSIONID`)
+
+La app acepta una variable de entorno opcional `IG_SESSIONID`. Si la defines, las
+peticiones van autenticadas y Instagram deja de devolver el muro de login incluso desde
+Netlify. Es la tecnica que usan la mayoria de estas herramientas.
+
+Como obtenerla: entra a instagram.com en el navegador, abre las DevTools →
+Application → Cookies → `https://www.instagram.com`, y copia el valor de `sessionid`.
+En Netlify se configura en *Site configuration → Environment variables*.
+
+**Antes de usar esta opcion, ten claro lo siguiente:**
+
+- La cookie **es una credencial de acceso completo** a tu cuenta. Quien la tenga entra sin
+  contrasena y sin 2FA. Guardala solo como variable de entorno; nunca en el repositorio
+  ni en el codigo del frontend.
+- El acceso automatizado **va contra las Condiciones de Uso de Instagram**. La cuenta puede
+  acabar limitada, bloqueada temporalmente o suspendida. Si aun asi decides usarlo, hazlo
+  con una cuenta secundaria que no te importe perder, no con la principal.
+- La sesion **caduca**. Cuando lo haga, la app te avisara con un mensaje especifico y
+  tendras que volver a copiar el valor.
+- Cerrar sesion en el navegador donde copiaste la cookie la invalida.
+
+Es una decision tuya y depende de cuanto te importe cada cosa. Si el objetivo es guardar
+tus propios videos de vez en cuando, la **Opcion A es claramente la mas sensata**: cero
+configuracion y cero riesgo para tu cuenta.
+
+### Por que savefrom.net si funciona
+
+Servicios como ese sostienen la fiabilidad con infraestructura de proxies residenciales
+rotativos, cuentas desechables y mantenimiento constante frente a los cambios de Instagram.
+Replicar eso con una sola funcion serverless no es posible.
 
 ## Uso responsable
 
