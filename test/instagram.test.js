@@ -6,7 +6,24 @@ const {
   parseVideoFromApiJson,
   extractShortcode,
   isAllowedMediaHost,
+  resolveInstagramVideo,
 } = require('../lib/instagram');
+
+/** Sustituye fetch por una tabla de respuestas por fragmento de URL. */
+function stubFetch(routes) {
+  const original = globalThis.fetch;
+
+  globalThis.fetch = async (url) => {
+    const target = String(url);
+    const match = Object.keys(routes).find((key) => target.includes(key));
+    const { status = 200, body = '' } = match ? routes[match] : { status: 404 };
+    return new Response(body, { status });
+  };
+
+  return () => {
+    globalThis.fetch = original;
+  };
+}
 
 test('extractShortcode acepta las rutas de post validas', () => {
   assert.strictEqual(
@@ -104,6 +121,42 @@ test('parseVideoFromApiJson devuelve null si no hay video', () => {
     parseVideoFromApiJson({ data: { xdt_shortcode_media: { display_url: 'https://x/a.jpg' } } }),
     null
   );
+});
+
+test('un 404 de la API no aborta la cascada: el embed todavia puede resolver', async () => {
+  // Instagram devuelve 404 en web_info cuando bloquea la peticion, no solo
+  // cuando el post no existe. Antes eso cortaba el resto de estrategias.
+  const restore = stubFetch({
+    'api/v1/media/web_info': { status: 404 },
+    '/embed/': {
+      status: 200,
+      body: String.raw`<script>{"video_url":"https:\/\/scontent.cdninstagram.com\/v\/ok.mp4"}</script>`,
+    },
+  });
+
+  try {
+    const result = await resolveInstagramVideo('https://www.instagram.com/reel/ABC123/');
+    assert.strictEqual(result.videoUrl, 'https://scontent.cdninstagram.com/v/ok.mp4');
+  } finally {
+    restore();
+  }
+});
+
+test('cuando todo devuelve 404 el error no afirma que el post no existe', async () => {
+  const restore = stubFetch({ 'instagram.com': { status: 404 } });
+
+  try {
+    await assert.rejects(
+      resolveInstagramVideo('https://www.instagram.com/reel/ABC123/'),
+      (err) => {
+        assert.match(err.message, /bloquea la IP/);
+        assert.strictEqual(err.statusCode, 502);
+        return true;
+      }
+    );
+  } finally {
+    restore();
+  }
 });
 
 test('isAllowedMediaHost solo admite el CDN de Instagram/Meta', () => {
