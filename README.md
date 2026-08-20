@@ -36,6 +36,19 @@ solo el navegador en `http://localhost:3000`.
 Pega el enlace de un Reel, Post o IGTV **publico** y pulsa *Buscar video*.
 Para cerrarla, pulsa `Ctrl + C` en la ventana de la terminal.
 
+### Usarla desde el movil (con el PC encendido)
+
+Al arrancar, la app imprime dos direcciones: la local y una del tipo
+`http://192.168.x.x:3000`. Abre esa segunda en el navegador del movil, **con el
+movil conectado al mismo WiFi que el PC**.
+
+Las peticiones salen igualmente por el router de casa, asi que Instagram las ve
+como trafico residencial y no las bloquea. El PC tiene que quedarse encendido
+con la app abierta.
+
+La primera vez, Windows puede preguntar si permites el acceso a la red: hay que
+aceptarlo (basta con la red privada) o el movil no podra conectarse.
+
 ## Como funciona por dentro
 
 1. Del enlace se extrae el shortcode del post (los parametros `?igsh=...` se descartan).
@@ -62,6 +75,32 @@ npm test
 
 Cubren la extraccion del shortcode, el parseo de HTML y de la API (con fixtures),
 el comportamiento de la cascada ante errores, y las restricciones de host del proxy.
+
+## Solo con un iPhone, sin ordenador: un Atajo
+
+Si no hay ningun PC de por medio, la alternativa es un **Atajo** (app Atajos de Apple).
+Corre en el propio telefono, asi que sale por la IP residencial, y a diferencia del
+navegador no le afecta CORS. Se usa desde el boton *Compartir* de Instagram.
+
+Acciones, en orden:
+
+1. **Recibir** *URLs* de la hoja de compartir.
+2. **Coincidir texto** — patron: `(?:reel|p|tv)/([A-Za-z0-9_-]+)` sobre la URL recibida.
+3. **Obtener grupo de la coincidencia** — *Grupo 1*. Es el codigo del post.
+4. **Texto** — `https://www.instagram.com/p/[Grupo 1]/embed/captioned/`
+5. **Obtener contenido de URL** — metodo `GET`, y en *Encabezados* anadir
+   `User-Agent` con un valor de navegador de escritorio.
+6. **Coincidir texto** — patron: `"video_url":"([^"]+)"`
+7. **Obtener grupo de la coincidencia** — *Grupo 1*.
+8. **Reemplazar texto** — buscar `\/` y sustituir por `/`.
+9. **Obtener contenido de URL** — el resultado anterior (el mp4).
+10. **Guardar en album de fotos**.
+
+Es la misma cascada que hace esta app, reducida a su ruta mas fiable. Si el paso 6 no
+encuentra nada, Instagram no sirvio el video para ese post.
+
+Conviene construirlo uno mismo en lugar de instalar un atajo ajeno: un Atajo puede
+leer y enviar datos del telefono, y los de terceros no siempre son revisables.
 
 ## Por que no funciona en Netlify
 

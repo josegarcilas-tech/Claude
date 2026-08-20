@@ -1,11 +1,26 @@
 const express = require('express');
 const path = require('path');
+const os = require('os');
 const { Readable } = require('stream');
 const { spawn } = require('child_process');
 const { resolveInstagramVideo, isAllowedMediaHost } = require('./lib/instagram');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+/**
+ * Direccion del PC en la red local, para abrir la app desde el movil estando
+ * ambos en el mismo WiFi. Las peticiones salen igualmente por el router de
+ * casa, que es la IP residencial que Instagram no bloquea.
+ */
+function lanAddress() {
+  for (const interfaces of Object.values(os.networkInterfaces())) {
+    for (const net of interfaces || []) {
+      if (net.family === 'IPv4' && !net.internal) return net.address;
+    }
+  }
+  return null;
+}
 
 /** Abre la app en el navegador al arrancar. NO_OPEN=1 lo desactiva. */
 function openBrowser(url) {
@@ -82,11 +97,20 @@ app.get('/api/download', async (req, res) => {
   }
 });
 
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
   const url = `http://localhost:${PORT}`;
+  const lan = lanAddress();
+
   console.log('');
   console.log('  InstaSaver esta funcionando.');
-  console.log(`  Abre esta direccion en el navegador:  ${url}`);
+  console.log('');
+  console.log(`  En este ordenador:   ${url}`);
+
+  if (lan) {
+    console.log(`  Desde el movil:      http://${lan}:${PORT}`);
+    console.log('                       (el movil tiene que estar en el mismo WiFi)');
+  }
+
   console.log('');
   console.log('  Para pararlo, pulsa Ctrl + C en esta ventana.');
   console.log('');
