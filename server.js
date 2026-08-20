@@ -1,10 +1,29 @@
 const express = require('express');
 const path = require('path');
 const { Readable } = require('stream');
+const { spawn } = require('child_process');
 const { resolveInstagramVideo, isAllowedMediaHost } = require('./lib/instagram');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+/** Abre la app en el navegador al arrancar. NO_OPEN=1 lo desactiva. */
+function openBrowser(url) {
+  if (process.env.NO_OPEN) return;
+
+  const command =
+    process.platform === 'darwin' ? 'open'
+    : process.platform === 'win32' ? 'start'
+    : 'xdg-open';
+
+  try {
+    spawn(command, [url], { shell: process.platform === 'win32', detached: true, stdio: 'ignore' })
+      .on('error', () => {})
+      .unref();
+  } catch {
+    // Si no se puede abrir, el usuario siempre tiene la URL impresa en consola.
+  }
+}
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
@@ -64,5 +83,12 @@ app.get('/api/download', async (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`InstaSaver escuchando en http://localhost:${PORT}`);
+  const url = `http://localhost:${PORT}`;
+  console.log('');
+  console.log('  InstaSaver esta funcionando.');
+  console.log(`  Abre esta direccion en el navegador:  ${url}`);
+  console.log('');
+  console.log('  Para pararlo, pulsa Ctrl + C en esta ventana.');
+  console.log('');
+  openBrowser(url);
 });
