@@ -1,0 +1,123 @@
+{
+  "name": "t:sections.header.name",
+  "type": "header",
+  "sections": {
+    "2c2ec774-3430-481f-b927-e9c035b9d24e": {
+      "type": "horizontal-ticker",
+      "blocks": {
+        "sections--18060430639399__2c2ec774-3430-481f-b927-e9c035b9d24e-1679250655d32e639c-0": {
+          "type": "text",
+          "settings": {
+            "title": "WELCOME!"
+          }
+        },
+        "sections--18060430639399__2c2ec774-3430-481f-b927-e9c035b9d24e-1679250655d32e639c-1": {
+          "type": "text",
+          "settings": {
+            "title": "SITEWIDE SALE"
+          }
+        },
+        "sections--18060430639399__2c2ec774-3430-481f-b927-e9c035b9d24e-1679250655d32e639c-2": {
+          "type": "text",
+          "settings": {
+            "title": "USE CODE X FOR X% OFF!"
+          }
+        }
+      },
+      "block_order": [
+        "sections--18060430639399__2c2ec774-3430-481f-b927-e9c035b9d24e-1679250655d32e639c-0",
+        "sections--18060430639399__2c2ec774-3430-481f-b927-e9c035b9d24e-1679250655d32e639c-1",
+        "sections--18060430639399__2c2ec774-3430-481f-b927-e9c035b9d24e-1679250655d32e639c-2"
+      ],
+      "disabled": true,
+      "settings": {
+        "visibility": "always-display",
+        "speed": 3,
+        "mobile_spacing": 60,
+        "desktop_spacing": 100,
+        "color_scheme": "accent-1",
+        "mobile_text_size": 16,
+        "desktop_text_size": 18,
+        "italic_text": false,
+        "uppercase_text": false,
+        "bold_text": false,
+        "mobile_image_height": 26,
+        "desktop_image_height": 40,
+        "mobile_padding_top": 12,
+        "mobile_padding_bottom": 12,
+        "desktop_padding_top": 16,
+        "desktop_padding_bottom": 16
+      }
+    },
+    "fe1c8c67-b84c-4466-a515-70df3134c1c0": {
+      "type": "announcement-bar",
+      "blocks": {
+        "sections--21450414096679__fe1c8c67-b84c-4466-a515-70df3134c1c0-announcement-1": {
+          "type": "announcement",
+          "settings": {
+            "text": "Oferta por tiempo limitado, hasta un 60% de descuento",
+            "text_alignment": "center",
+            "mobile_text_size": 13,
+            "desktop_text_size": 15,
+            "icon": "",
+            "filled_icon": false,
+            "mobile_icon_size": 20,
+            "desktop_icon_size": 26,
+            "desktop_layout": "horizontal",
+            "mobile_layout": "horizontal",
+            "hidden_products": "",
+            "enable_specific_display": false,
+            "displayed_products": ""
+          }
+        }
+      },
+      "block_order": [
+        "sections--21450414096679__fe1c8c67-b84c-4466-a515-70df3134c1c0-announcement-1"
+      ],
+      "settings": {
+        "columns_desktop": 1,
+        "columns_mobile": 1,
+        "desktop_spacing": 28,
+        "mobile_spacing": 16,
+        "show_separator": false,
+        "color_scheme": "accent-1",
+        "slider_mobile": true,
+        "slider_desktop": false,
+        "type": "loop",
+        "autoplay": false,
+        "autoplay_speed": 3,
+        "padding_top": 10,
+        "padding_bottom": 10
+      }
+    },
+    "header": {
+      "type": "header",
+      "settings": {
+        "sticky_header_type": "on-scroll-up",
+        "show_line_separator": true,
+        "color_scheme": "background-1",
+        "logo_position": "middle-center",
+        "menu": "main-menu",
+        "highlight_active_link": true,
+        "highlighted_link_color_scheme": "accent-1",
+        "products_mega_menu_links": "",
+        "products_mega_menu_display_collection_products": true,
+        "products_mega_menu_display_collection_images": true,
+        "products_mega_menu_display_collection_images_on_mobile": true,
+        "mobile_menu_title": "Menu",
+        "secondary_menu": "",
+        "menu_color_scheme": "background-1",
+        "mobile_logo_position": "center",
+        "display_search": true,
+        "margin_bottom": 0,
+        "padding_top": 20,
+        "padding_bottom": 20
+      }
+    }
+  },
+  "order": [
+    "2c2ec774-3430-481f-b927-e9c035b9d24e",
+    "fe1c8c67-b84c-4466-a515-70df3134c1c0",
+    "header"
+  ]
+}

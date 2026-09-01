@@ -1,0 +1,815 @@
+{
+  "sections": {
+    "main": {
+      "type": "main-product",
+      "blocks": {
+        "rating_stars": {
+          "type": "rating_stars",
+          "settings": {
+            "rating": 4.8,
+            "star_color": "#00B67A",
+            "bg_stars_style": "full",
+            "bg_star_color": "#dcdcdc",
+            "label": "<strong>Excelente 4.8 de 5</strong>",
+            "size": 14,
+            "alignment": "flex-start",
+            "scroll_id": "",
+            "margin_top": 0,
+            "margin_bottom": 6
+          }
+        },
+        "title": {
+          "type": "title",
+          "settings": {
+            "text_size": "h2",
+            "title_alignment": "left",
+            "uppercase_title": false,
+            "margin_top": 0,
+            "margin_bottom": 10
+          }
+        },
+        "description": {
+          "type": "description",
+          "settings": {
+            "margin_top": 0,
+            "margin_bottom": 12
+          }
+        },
+        "benefits_1": {
+          "type": "text",
+          "settings": {
+            "mobile_text_size": 14,
+            "desktop_text_size": 15,
+            "alignment": "left",
+            "text_color": "#121212",
+            "text_1": "Ayuda a conciliar el sueño más rápido",
+            "text_2": "Se puede meter al congelador para una sensación refrescante",
+            "text_3": "Presión suave que relaja la mente",
+            "icon_scale": 130,
+            "icon_color": "#B9975B",
+            "icon_1": "check_circle",
+            "filled_icon_1": true,
+            "icon_2": "check_circle",
+            "filled_icon_2": true,
+            "icon_3": "check_circle",
+            "filled_icon_3": true,
+            "width": "100%",
+            "direction": "vertical",
+            "column_gap": 8,
+            "enable_bg": false,
+            "bg_color": "#F3F3F3",
+            "corner_radius": 40,
+            "padding": 3,
+            "border_size": 0,
+            "border_color": "#B7B7B7",
+            "margin_top": 0,
+            "margin_bottom": 0
+          }
+        },
+        "benefits_2": {
+          "type": "text",
+          "settings": {
+            "mobile_text_size": 14,
+            "desktop_text_size": 15,
+            "alignment": "left",
+            "text_color": "#121212",
+            "text_1": "Solo 3-5 minutos es todo lo que necesitas para relajarte",
+            "text_2": "",
+            "text_3": "",
+            "icon_scale": 130,
+            "icon_color": "#B9975B",
+            "icon_1": "check_circle",
+            "filled_icon_1": true,
+            "icon_2": "check_circle",
+            "filled_icon_2": false,
+            "icon_3": "check_circle",
+            "filled_icon_3": false,
+            "width": "100%",
+            "direction": "vertical",
+            "column_gap": 8,
+            "enable_bg": false,
+            "bg_color": "#F3F3F3",
+            "corner_radius": 40,
+            "padding": 3,
+            "border_size": 0,
+            "border_color": "#B7B7B7",
+            "margin_top": 0,
+            "margin_bottom": 8
+          }
+        },
+        "urgency": {
+          "type": "urgency",
+          "settings": {
+            "urgency": "¡Últimas unidades!",
+            "color_scheme": "accent-2",
+            "margin_top": 0,
+            "margin_bottom": 18
+          }
+        },
+        "variant_picker": {
+          "type": "variant_picker",
+          "settings": {
+            "picker_types": "dropdown, dropdown, dropdown",
+            "custom_labels": "",
+            "swatches_size": "medium",
+            "swatches_custom_colors": "disabled",
+            "swatches_custom_colors_list": "#000000, #FFFFFF",
+            "full_width_dropdowns": false,
+            "breaks_style": "normal",
+            "breaks_headline": "",
+            "breaks_color_scheme": "accent-1",
+            "breaks_badges": "[empty], El más vendido 🔥, [empty]",
+            "breaks_displayed_images": "variant_images",
+            "breaks_custom_images": "",
+            "breaks_image_width": 70,
+            "breaks_space_images": true,
+            "breaks_labels": "[name], [name], [name]",
+            "breaks_benefits": "[empty], [empty], [empty]",
+            "breaks_captions": "[empty], [empty], [empty]",
+            "breaks_price_texts": "[price], [price], [price]",
+            "breaks_compare_price_texts": "[compare_price], [compare_price], [compare_price]",
+            "margin_top": 0,
+            "margin_bottom": 0
+          }
+        },
+        "quantity_breaks": {
+          "type": "quantity_selector",
+          "settings": {
+            "enable_quantity_discounts": true,
+            "style": "normal",
+            "headline": "",
+            "preselected": "option_1",
+            "enable_variant_selectors": true,
+            "enable_variant_selectors_on_quantity_of_1": true,
+            "hide_pickers_overlay": true,
+            "image_width": 70,
+            "space_images": true,
+            "color_scheme": "accent-1",
+            "option_1_quantity": 1,
+            "option_1_badge": "",
+            "option_1_label": "1X Máscara nocturna con peso",
+            "option_1_benefit": "",
+            "option_1_caption": "",
+            "option_1_percentage_off": "0",
+            "option_1_fixed_amount_off": "0",
+            "option_1_price_text": "[price]",
+            "option_1_compare_price": "compare_price",
+            "option_1_compare_price_text": "[compare_price]",
+            "option_2_quantity": 2,
+            "option_2_badge": "El más vendido 🔥",
+            "option_2_label": "2 X Máscara nocturna con peso",
+            "option_2_benefit": "",
+            "option_2_caption": "",
+            "option_2_percentage_off": "12.5",
+            "option_2_fixed_amount_off": "0",
+            "option_2_price_text": "[price]",
+            "option_2_compare_price": "compare_price",
+            "option_2_compare_price_text": "[compare_price]",
+            "option_3_quantity": 0,
+            "option_3_badge": "",
+            "option_3_label": "3 X Máscara nocturna con peso",
+            "option_3_benefit": "",
+            "option_3_caption": "Ahorras [amount_saved]",
+            "option_3_percentage_off": "20",
+            "option_3_fixed_amount_off": "0",
+            "option_3_price_text": "[price]",
+            "option_3_compare_price": "compare_price",
+            "option_3_compare_price_text": "[compare_price]",
+            "option_4_quantity": 0,
+            "option_4_badge": "",
+            "option_4_label": "Compra [quantity]",
+            "option_4_benefit": "",
+            "option_4_caption": "Ahorras [amount_saved]",
+            "option_4_percentage_off": "0",
+            "option_4_fixed_amount_off": "0",
+            "option_4_price_text": "[price]",
+            "option_4_compare_price": "compare_price",
+            "option_4_compare_price_text": "[compare_price]",
+            "margin_top": 12,
+            "margin_bottom": 16
+          }
+        },
+        "buy_buttons": {
+          "type": "buy_buttons",
+          "settings": {
+            "show_dynamic_checkout": true,
+            "skip_cart": true,
+            "uppercase_text": false,
+            "display_price": false,
+            "enable_custom_color": true,
+            "custom_color": "#B9975B",
+            "margin_top": 8,
+            "margin_bottom": 10
+          }
+        },
+        "payment_badges": {
+          "type": "payment_badges",
+          "settings": {
+            "enabled_payment_types": "visa, master, paypal, apple_pay, shopify_pay, google_pay",
+            "margin_top": 0,
+            "margin_bottom": 24
+          }
+        },
+        "tab_descripcion": {
+          "type": "collapsible_tab",
+          "settings": {
+            "heading": "Descripción",
+            "heading_size": "medium",
+            "icon": "",
+            "filled_icon": false,
+            "collapse_icon": "carret",
+            "display_top_border": true,
+            "content": "<p>El diseño único de la máscara y la correa distribuyen la presión de manera uniforme, creando una presión de contacto profunda sobre los puntos de presión centrales. Estimula las terminaciones nerviosas de forma activa, aliviando el dolor de cabeza y ayudándote a sumergirte en un sueño profundo y relajado.</p>",
+            "page": "",
+            "margin_top": 0,
+            "margin_bottom": 0
+          }
+        },
+        "tab_materiales": {
+          "type": "collapsible_tab",
+          "settings": {
+            "heading": "Materiales",
+            "heading_size": "medium",
+            "icon": "",
+            "filled_icon": false,
+            "collapse_icon": "carret",
+            "display_top_border": true,
+            "content": "<p>Tela suave al tacto (Sof-Touch)</p><p>Material de relleno – 100% perlas de polietileno (PE), sin BPA y sin olores</p><p><strong>Instrucciones de lavado y cuidado</strong></p><ul><li>Lavar a máquina en ciclo normal con la funda de lavado completamente cerrada, dentro de una bolsa de lavado (malla).</li><li>Para mantener el producto flexible, se recomienda secar al aire en un lugar seco para preservar su vida útil.</li></ul>",
+            "page": "",
+            "margin_top": 0,
+            "margin_bottom": 0
+          }
+        },
+        "tab_medidas": {
+          "type": "collapsible_tab",
+          "settings": {
+            "heading": "Medidas",
+            "heading_size": "medium",
+            "icon": "",
+            "filled_icon": false,
+            "collapse_icon": "carret",
+            "display_top_border": true,
+            "content": "<p><strong>Dimensiones:</strong> aprox. 74 cm × 10 cm</p><p><strong>Peso:</strong> aprox. 255 gramos</p>",
+            "page": "",
+            "margin_top": 0,
+            "margin_bottom": 24
+          }
+        },
+        "sticky_atc": {
+          "type": "sticky_atc",
+          "settings": {
+            "function": "add_to_cart",
+            "display_when": "after_scroll",
+            "button_label": "Compra ahora 👉",
+            "color_scheme": "background-1",
+            "star_color": "#00B67A",
+            "stars_label": "Excelente 4.8 de 5",
+            "desktop_show_image": true,
+            "desktop_show_title": true,
+            "desktop_rating_stars": true,
+            "desktop_show_price": true,
+            "desktop_show_sale_badge": true,
+            "desktop_variant_picker": false,
+            "desktop_full_button_width": false,
+            "desktop_show_price_in_button": false,
+            "desktop_transparent_bg": false,
+            "mobile_show_image": false,
+            "mobile_show_title": true,
+            "mobile_rating_stars": false,
+            "mobile_show_price": true,
+            "mobile_show_sale_badge": false,
+            "mobile_variant_picker": false,
+            "mobile_full_button_width": false,
+            "mobile_show_price_in_button": false,
+            "mobile_transparent_bg": false
+          }
+        }
+      },
+      "block_order": [
+        "rating_stars",
+        "title",
+        "description",
+        "benefits_1",
+        "benefits_2",
+        "urgency",
+        "variant_picker",
+        "quantity_breaks",
+        "buy_buttons",
+        "payment_badges",
+        "tab_descripcion",
+        "tab_materiales",
+        "tab_medidas",
+        "sticky_atc"
+      ],
+      "custom_css": [],
+      "settings": {
+        "enable_sticky_info": true,
+        "display_variant_image_first": true,
+        "media_size": "medium",
+        "constrain_to_viewport": true,
+        "media_fit": "cover",
+        "gallery_layout": "thumbnail_slider",
+        "media_position": "left",
+        "image_zoom": "lightbox",
+        "hide_variants": false,
+        "enable_video_looping": true,
+        "desktop_thumbnails_count": 5,
+        "mobile_thumbnails": "show",
+        "mobile_media_corner_radius": 0,
+        "mobile_spacing": false,
+        "mobile_preview_media": false,
+        "mobile_thumbnails_count": 5,
+        "mobile_pagination": "hidden",
+        "hide_arrows": false,
+        "dots_color_scheme": "inverse",
+        "trust_badge_position": "top-right",
+        "trust_badge_size": "medium",
+        "mobile_padding_top": 0,
+        "mobile_padding_bottom": 16,
+        "desktop_padding_top": 36,
+        "desktop_padding_bottom": 36
+      }
+    },
+    "como_visto_en": {
+      "type": "logo-list",
+      "blocks": {
+        "logo_hola": {
+          "type": "logo",
+          "settings": {
+            "link": "",
+            "target_blank": false
+          }
+        },
+        "logo_glamour": {
+          "type": "logo",
+          "settings": {
+            "link": "",
+            "target_blank": false
+          }
+        }
+      },
+      "block_order": [
+        "logo_hola",
+        "logo_glamour"
+      ],
+      "settings": {
+        "display_id": false,
+        "visibility": "always-display",
+        "title": "Como visto en:",
+        "heading_size": "h2",
+        "gray_logos": true,
+        "color_scheme": "background-2",
+        "layout": "horizontal",
+        "desktop_logo_height": 40,
+        "columns_mobile": 2,
+        "mobile_logo_height": 30,
+        "mobile_slider": false,
+        "autoplay": false,
+        "autoplay_speed": 5,
+        "show_dots": false,
+        "padding_top": 24,
+        "padding_bottom": 24
+      }
+    },
+    "iconos_beneficios": {
+      "type": "icon-bar",
+      "blocks": {
+        "ib_1": {
+          "type": "column",
+          "settings": {
+            "icon": "stethoscope",
+            "filled_icon": false,
+            "title": "Dermatológicamente testado",
+            "text": ""
+          }
+        },
+        "ib_2": {
+          "type": "column",
+          "settings": {
+            "icon": "eco",
+            "filled_icon": false,
+            "title": "Reutilizable",
+            "text": "<p>5+ usos</p>"
+          }
+        },
+        "ib_3": {
+          "type": "column",
+          "settings": {
+            "icon": "inventory",
+            "filled_icon": false,
+            "title": "Lift real",
+            "text": "<p>Sensación ligera</p>"
+          }
+        },
+        "ib_4": {
+          "type": "column",
+          "settings": {
+            "icon": "water_drop",
+            "filled_icon": false,
+            "title": "+3,3 mil vendidos",
+            "text": ""
+          }
+        }
+      },
+      "block_order": [
+        "ib_1",
+        "ib_2",
+        "ib_3",
+        "ib_4"
+      ],
+      "settings": {
+        "display_id": false,
+        "visibility": "always-display",
+        "title": "",
+        "heading_size": "h1",
+        "text": "",
+        "color_scheme": "background-1",
+        "icon_layout": "vertical",
+        "icon_size": "medium",
+        "icon_color": "text",
+        "cards_color_scheme": "background-1",
+        "type": "slide",
+        "autoplay": false,
+        "autoplay_speed": 5,
+        "arrows_color_scheme": "inverse",
+        "transparent_arrows": true,
+        "dots_color_scheme": "inverse",
+        "desktop_full_page": false,
+        "columns_desktop": 4,
+        "slider_desktop": false,
+        "per_move_desktop": 1,
+        "desktop_spacing": 40,
+        "desktop_side_padding": 0,
+        "desktop_padding_calc": true,
+        "desktop_adaptive_height": false,
+        "desktop_dots_position": "hidden",
+        "desktop_arrows_position": "hidden",
+        "columns_mobile": "2",
+        "slider_mobile": false,
+        "enable_mobile_preview": false,
+        "mobile_adaptive_height": false,
+        "mobile_dots_position": "hidden",
+        "mobile_arrows_position": "hidden",
+        "padding_top": 24,
+        "padding_bottom": 24
+      }
+    },
+    "banner_video": {
+      "type": "image-banner",
+      "blocks": {
+        "banner_heading": {
+          "type": "heading",
+          "settings": {
+            "heading": "Can't wait to sleep with you",
+            "heading_size": "h1"
+          }
+        }
+      },
+      "block_order": [
+        "banner_heading"
+      ],
+      "settings": {
+        "display_id": false,
+        "visibility": "always-display",
+        "image_1_visibility": "always-display",
+        "image_2_visibility": "always-display",
+        "image_overlay_opacity": 10,
+        "image_height": "adapt",
+        "desktop_content_position": "middle-center",
+        "show_text_box": false,
+        "desktop_content_alignment": "center",
+        "color_scheme": "inverse",
+        "transparent_container_color": "white",
+        "mobile_content_alignment": "center",
+        "stack_images_on_mobile": true,
+        "show_text_below": false
+      }
+    },
+    "por_que": {
+      "type": "icons-with-content",
+      "blocks": {
+        "why_heading": {
+          "type": "heading",
+          "settings": {
+            "heading": "¿Por qué una máscara para dormir con peso?",
+            "heading_size": "h1"
+          }
+        },
+        "why_text": {
+          "type": "text",
+          "settings": {
+            "text": "<p>Mediante una presión de contacto profunda que se distribuye de manera uniforme alrededor de los ojos, la máscara relaja el cuerpo y la mente — y te ayuda a dormirte más rápido y descansar mejor.</p>",
+            "text_style": "body"
+          }
+        },
+        "why_icon_1": {
+          "type": "icon",
+          "settings": {
+            "icon": "self_improvement",
+            "filled_icon": false,
+            "title": "Relaja de forma natural",
+            "text": "<p>Ideal para mentes inquietas — ayuda a conciliar el sueño más rápido.</p>"
+          }
+        },
+        "why_icon_2": {
+          "type": "icon",
+          "settings": {
+            "icon": "timer",
+            "filled_icon": false,
+            "title": "La magia de 3 minutos",
+            "text": "<p>Sentirás la magia de la presión de contacto profunda en cuestión de minutos.</p>"
+          }
+        },
+        "why_icon_3": {
+          "type": "icon",
+          "settings": {
+            "icon": "spa",
+            "filled_icon": false,
+            "title": "Enfocada en los puntos de presión centrales",
+            "text": "<p>Diseñada con cuatro pequeñas almohadillas que concentran la presión en los puntos clave para una terapia óptima.</p>"
+          }
+        },
+        "why_caption": {
+          "type": "caption",
+          "settings": {
+            "caption": "SIN CORREAS · SIN OLOR · APTA PARA CONGELAR",
+            "text_style": "caption-with-letter-spacing",
+            "text_size": "small"
+          }
+        },
+        "why_image": {
+          "type": "image",
+          "settings": {}
+        }
+      },
+      "block_order": [
+        "why_heading",
+        "why_text",
+        "why_icon_1",
+        "why_icon_2",
+        "why_icon_3",
+        "why_caption",
+        "why_image"
+      ],
+      "settings": {
+        "display_id": false,
+        "visibility": "always-display",
+        "color_scheme": "background-1",
+        "icon_size": "l",
+        "icon_position": "next-to-text",
+        "icon_color": "text",
+        "icon_heading_size": "h4",
+        "icon_text_alignment": "left",
+        "icons_desktop_layout": "1-column",
+        "icons_mobile_layout": "1-column",
+        "desktop_content_alignment": "left",
+        "layout": "text_first",
+        "mobile_layout": "text_first",
+        "hide_content_on_mobile": false,
+        "padding_top": 36,
+        "padding_bottom": 36
+      }
+    },
+    "como_usarla": {
+      "type": "multicolumn",
+      "blocks": {
+        "step_1": {
+          "type": "column",
+          "settings": {
+            "muted_autoplay": true,
+            "title": "1. Dormir de lado",
+            "text": "<p>Usa las dos pestañas de los extremos por encima de los ojos y coloca la parte superior de la cabeza sobre el borde hueco.</p>",
+            "link_label": "",
+            "link": ""
+          }
+        },
+        "step_2": {
+          "type": "column",
+          "settings": {
+            "muted_autoplay": true,
+            "title": "2. Uso en posición erguida y segura",
+            "text": "<p>Ajusta la esquina a través de la ranura y asegúrala bien.</p>",
+            "link_label": "",
+            "link": ""
+          }
+        }
+      },
+      "block_order": [
+        "step_1",
+        "step_2"
+      ],
+      "settings": {
+        "display_id": false,
+        "visibility": "always-display",
+        "title": "Cómo usarla",
+        "heading_size": "h1",
+        "button_label": "",
+        "button_link": "",
+        "atc_button_label": "",
+        "color_scheme": "background-1",
+        "image_width": "full",
+        "image_ratio": "adapt",
+        "column_alignment": "center",
+        "cards_color_scheme": "background-1",
+        "type": "slide",
+        "autoplay": false,
+        "autoplay_speed": 5,
+        "arrows_color_scheme": "inverse",
+        "transparent_arrows": true,
+        "dots_color_scheme": "inverse",
+        "desktop_full_page": false,
+        "columns_desktop": 2,
+        "slider_desktop": false,
+        "per_move_desktop": 1,
+        "desktop_spacing": 40,
+        "desktop_side_padding": 0,
+        "desktop_padding_calc": true,
+        "desktop_adaptive_height": false,
+        "desktop_dots_position": "hidden",
+        "desktop_arrows_position": "hidden",
+        "columns_mobile": "1",
+        "slider_mobile": false,
+        "enable_mobile_preview": false,
+        "mobile_adaptive_height": false,
+        "mobile_dots_position": "hidden",
+        "mobile_arrows_position": "hidden",
+        "padding_top": 36,
+        "padding_bottom": 36
+      }
+    },
+    "resenas": {
+      "type": "testimonials",
+      "blocks": {
+        "rev_1": {
+          "type": "column",
+          "settings": {
+            "title": "Duermo mucho mejor",
+            "text": "<p>Reseña de cliente (reemplazar con una reseña real).</p>",
+            "author": "<em><strong>Nombre del cliente</strong></em>"
+          }
+        },
+        "rev_2": {
+          "type": "column",
+          "settings": {
+            "title": "La uso todas las noches",
+            "text": "<p>Reseña de cliente (reemplazar con una reseña real).</p>",
+            "author": "<em><strong>Nombre del cliente</strong></em>"
+          }
+        },
+        "rev_3": {
+          "type": "column",
+          "settings": {
+            "title": "Adiós dolor de cabeza",
+            "text": "<p>Reseña de cliente (reemplazar con una reseña real).</p>",
+            "author": "<em><strong>Nombre del cliente</strong></em>"
+          }
+        }
+      },
+      "block_order": [
+        "rev_1",
+        "rev_2",
+        "rev_3"
+      ],
+      "settings": {
+        "display_id": false,
+        "visibility": "always-display",
+        "title": "Lo que dicen nuestras clientas",
+        "heading_size": "h1",
+        "text": "",
+        "color_scheme": "background-2",
+        "style": "cards",
+        "image_width": "full",
+        "image_ratio": "square",
+        "column_alignment": "left",
+        "show_stars": true,
+        "stars_color": "#00B67A",
+        "show_quotes": false,
+        "quotes_color_scheme": "accent-2",
+        "cards_color_scheme": "background-1",
+        "type": "slide",
+        "autoplay": false,
+        "autoplay_speed": 5,
+        "arrows_color_scheme": "inverse",
+        "transparent_arrows": true,
+        "dots_color_scheme": "inverse",
+        "desktop_full_page": false,
+        "columns_desktop": 3,
+        "slider_desktop": false,
+        "per_move_desktop": 1,
+        "desktop_spacing": 40,
+        "desktop_side_padding": 0,
+        "desktop_padding_calc": true,
+        "desktop_adaptive_height": false,
+        "desktop_dots_position": "under",
+        "desktop_arrows_position": "sides",
+        "slider_mobile": true,
+        "enable_mobile_preview": true,
+        "mobile_adaptive_height": false,
+        "mobile_dots_position": "under",
+        "mobile_arrows_position": "hidden",
+        "padding_top": 36,
+        "padding_bottom": 36
+      }
+    },
+    "faq": {
+      "type": "collapsible-content",
+      "blocks": {
+        "faq_1": {
+          "type": "collapsible_row",
+          "settings": {
+            "heading": "¿Cuánto tiempo debo usar la máscara?",
+            "icon": "",
+            "filled_icon": false,
+            "row_content": "<p>Con 3-5 minutos de uso ya sientes el efecto relajante; puedes dejarla puesta toda la noche.</p>",
+            "page": ""
+          }
+        },
+        "faq_2": {
+          "type": "collapsible_row",
+          "settings": {
+            "heading": "¿Se puede lavar?",
+            "icon": "",
+            "filled_icon": false,
+            "row_content": "<p>Sí. Lávala a máquina en ciclo normal con la funda cerrada y dentro de una bolsa de malla, y sécala al aire.</p>",
+            "page": ""
+          }
+        },
+        "faq_3": {
+          "type": "collapsible_row",
+          "settings": {
+            "heading": "¿Se puede meter al congelador?",
+            "icon": "",
+            "filled_icon": false,
+            "row_content": "<p>Sí. Guárdala en el congelador para una sensación refrescante que alivia la hinchazón y el dolor de cabeza.</p>",
+            "page": ""
+          }
+        },
+        "faq_4": {
+          "type": "collapsible_row",
+          "settings": {
+            "heading": "¿Cuánto tarda el envío?",
+            "icon": "",
+            "filled_icon": false,
+            "row_content": "<p>Reemplaza este texto con tus tiempos de envío reales.</p>",
+            "page": ""
+          }
+        }
+      },
+      "block_order": [
+        "faq_1",
+        "faq_2",
+        "faq_3",
+        "faq_4"
+      ],
+      "settings": {
+        "display_id": false,
+        "visibility": "always-display",
+        "caption": "",
+        "heading": "Preguntas frecuentes",
+        "heading_size": "h1",
+        "heading_alignment": "center",
+        "layout": "none",
+        "color_scheme": "background-1",
+        "container_color_scheme": "background-2",
+        "open_first_collapsible_row": false,
+        "image_ratio": "adapt",
+        "desktop_layout": "image_second",
+        "row_heading_size": "medium",
+        "collapse_icon": "plus",
+        "display_top_border": true,
+        "padding_top": 36,
+        "padding_bottom": 36
+      }
+    },
+    "related-products": {
+      "type": "related-products",
+      "disabled": true,
+      "settings": {
+        "display_id": false,
+        "heading": "También te puede gustar",
+        "heading_size": "h2",
+        "products_to_show": 4,
+        "columns_desktop": 4,
+        "color_scheme": "background-1",
+        "image_ratio": "adapt",
+        "show_secondary_image": false,
+        "show_vendor": false,
+        "show_rating": false,
+        "columns_mobile": "2",
+        "padding_top": 36,
+        "padding_bottom": 24
+      }
+    }
+  },
+  "order": [
+    "main",
+    "como_visto_en",
+    "iconos_beneficios",
+    "banner_video",
+    "por_que",
+    "como_usarla",
+    "resenas",
+    "faq",
+    "related-products"
+  ]
+}
